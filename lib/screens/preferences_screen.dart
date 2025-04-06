@@ -1,18 +1,25 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
-import 'package:flex_color_picker/flex_color_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:overkeys/models/user_config.dart';
-import 'package:overkeys/models/keyboard_layouts.dart';
-import 'package:overkeys/models/mouse_layout.dart';
 import 'package:overkeys/utils/theme_manager.dart';
-import 'package:overkeys/services/config_service.dart';
+import 'package:overkeys/services/preferences_service.dart';
+import 'package:overkeys/widgets/tabs/general_tab.dart';
+import 'package:overkeys/widgets/tabs/keyboard_tab.dart';
+import 'package:overkeys/widgets/tabs/text_tab.dart';
+import 'package:overkeys/widgets/tabs/markers_tab.dart';
+import 'package:overkeys/widgets/tabs/colors_tab.dart';
+import 'package:overkeys/widgets/tabs/animations_tab.dart';
+import 'package:overkeys/widgets/tabs/hotkeys_tab.dart';
+import 'package:overkeys/widgets/tabs/learn_tab.dart';
+import 'package:overkeys/widgets/tabs/advanced_tab.dart';
+import 'package:overkeys/widgets/tabs/about_tab.dart';
 
 class PreferencesScreen extends StatefulWidget {
   const PreferencesScreen({super.key, required this.windowController});
@@ -25,7 +32,7 @@ class PreferencesScreen extends StatefulWidget {
 
 class _PreferencesScreenState extends State<PreferencesScreen>
     with WindowListener {
-  final SharedPreferencesAsync asyncPrefs = SharedPreferencesAsync();
+  final PreferencesService _prefsService = PreferencesService();
 
   // UI state
   Brightness _brightness = Brightness.dark;
@@ -36,22 +43,8 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   bool _launchAtStartup = false;
   bool _autoHideEnabled = false;
   double _autoHideDuration = 2.0;
-  String _keyboardLayoutName = 'QWERTY';
-  bool _showAdvancedSettings = false;
-  bool _useUserLayout = false;
-  bool _showAltLayout = false;
-  bool _kanataEnabled = false;
-
-  // Appearance settings
   double _opacity = 0.6;
-  Color _keyColorPressed = const Color.fromARGB(255, 30, 30, 30);
-  Color _keyColorNotPressed = const Color.fromARGB(255, 119, 171, 255);
-  Color _markerColor = Colors.white;
-  Color _markerColorNotPressed = Colors.black;
-  double _markerOffset = 10;
-  double _markerWidth = 10;
-  double _markerHeight = 2;
-  double _markerBorderRadius = 10;
+  String _keyboardLayoutName = 'QWERTY';
 
   // Keyboard settings
   String _keymapStyle = 'Staggered';
@@ -59,17 +52,78 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   bool _showGraveKey = false;
   double _keySize = 48;
   double _keyBorderRadius = 12;
+  double _keyBorderThickness = 0;
   double _keyPadding = 3;
   double _spaceWidth = 320;
   double _splitWidth = 100;
+  double _lastRowSplitWidth = 100;
 
   // Text settings
   String _fontFamily = 'GeistMono';
+  FontWeight _fontWeight = FontWeight.w600;
   double _keyFontSize = 20;
   double _spaceFontSize = 14;
-  FontWeight _fontWeight = FontWeight.w600;
+
+  // Markers settings
+  double _markerOffset = 10;
+  double _markerWidth = 10;
+  double _markerHeight = 2;
+  double _markerBorderRadius = 10;
+
+  // Colors settings
+  Color _keyColorPressed = const Color.fromARGB(255, 30, 30, 30);
+  Color _keyColorNotPressed = const Color.fromARGB(255, 119, 171, 255);
+  Color _markerColor = Colors.white;
+  Color _markerColorNotPressed = Colors.black;
   Color _keyTextColor = Colors.white;
   Color _keyTextColorNotPressed = Colors.black;
+  Color _keyBorderColorPressed = Colors.black;
+  Color _keyBorderColorNotPressed = Colors.white;
+
+  // Animations settings
+  bool _animationEnabled = true;
+  String _animationStyle = 'Raise';
+  double _animationDuration = 100;
+  double _animationScale = 2.0;
+
+  // HotKey settings
+  bool _hotKeysEnabled = true;
+  HotKey _visibilityHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyQ,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _autoHideHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyW,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _toggleMoveHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyE,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _preferencesHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyR,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+
+  // Learn settings
+  bool _learningModeEnabled = false;
+  Color _pinkyLeftColor = const Color(0xFFED3345);
+  Color _ringLeftColor = const Color(0xFFFAA71D);
+  Color _middleLeftColor = const Color(0xFF70C27B);
+  Color _indexLeftColor = const Color(0xFF00AFEB);
+  Color _indexRightColor = const Color(0xFF5985BF);
+  Color _middleRightColor = const Color(0xFF97D6F5);
+  Color _ringRightColor = const Color(0xFFFFE8A0);
+  Color _pinkyRightColor = const Color(0xFFBDE0BF);
+
+  // Advanced settings
+  bool _advancedSettingsEnabled = false;
+  bool _useUserLayout = false;
+  bool _showAltLayout = false;
+  bool _customFontEnabled = false;
+  bool _use6ColLayout = false;
+  bool _kanataEnabled = false;
+  bool _keyboardFollowsMouse = false;
 
   // Mouse settings
   bool _enableMouse = false;
@@ -123,177 +177,180 @@ class _PreferencesScreenState extends State<PreferencesScreen>
 
   void _setupMethodHandler() {
     DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      if (call.method == 'getWindowType') {
+        return jsonEncode({'type': 'preferences'});
+      }
+
       if (call.method == 'updateAutoHideFromMainWindow' && mounted) {
         setState(() => _autoHideEnabled = call.arguments as bool);
-        await asyncPrefs.setBool('autoHideEnabled', _autoHideEnabled);
+        await _prefsService.setAutoHideEnabled(_autoHideEnabled);
+      }
+
+      if (call.method == 'requestFocus') {
+        await windowManager.focus();
       }
       return null;
     });
   }
 
   Future<void> _loadPreferences() async {
-    // General settings
-    bool launchAtStartup = await asyncPrefs.getBool('launchAtStartup') ?? false;
-    bool autoHideEnabled = await asyncPrefs.getBool('autoHideEnabled') ?? false;
-    double autoHideDuration =
-        await asyncPrefs.getDouble('autoHideDuration') ?? 2.0;
-    String keyboardLayoutName =
-        await asyncPrefs.getString('layout') ?? 'QWERTY';
-    bool showAdvancedSettings =
-        await asyncPrefs.getBool('showAdvancedSettings') ?? false;
-    bool useUserLayout = await asyncPrefs.getBool('useUserLayout') ?? false;
-    bool showAltLayout = await asyncPrefs.getBool('showAltLayout') ?? false;
-    bool kanataEnabled = await asyncPrefs.getBool('kanataEnabled') ?? false;
-
-    // Appearance settings
-    double opacity = await asyncPrefs.getDouble('opacity') ?? 0.6;
-    Color keyColorPressed =
-        Color(await asyncPrefs.getInt('keyColorPressed') ?? 0xFF1E1E1E);
-    Color keyColorNotPressed =
-        Color(await asyncPrefs.getInt('keyColorNotPressed') ?? 0xFF77ABFF);
-    Color markerColor =
-        Color(await asyncPrefs.getInt('markerColor') ?? 0xFFFFFFFF);
-    Color markerColorNotPressed =
-        Color(await asyncPrefs.getInt('markerColorNotPressed') ?? 0xFF000000);
-    double markerOffset = await asyncPrefs.getDouble('markerOffset') ?? 10;
-    double markerWidth = await asyncPrefs.getDouble('markerWidth') ?? 10;
-    double markerHeight = await asyncPrefs.getDouble('markerHeight') ?? 2;
-    double markerBorderRadius =
-        await asyncPrefs.getDouble('markerBorderRadius') ?? 10;
-
-    // Keyboard settings
-    String keymapStyle =
-        await asyncPrefs.getString('keymapStyle') ?? 'Staggered';
-    bool showTopRow = await asyncPrefs.getBool('showTopRow') ?? false;
-    bool showGraveKey = await asyncPrefs.getBool('showGraveKey') ?? false;
-    double keySize = await asyncPrefs.getDouble('keySize') ?? 48;
-    double keyBorderRadius =
-        await asyncPrefs.getDouble('keyBorderRadius') ?? 12;
-    double keyPadding = await asyncPrefs.getDouble('keyPadding') ?? 3;
-    double spaceWidth = await asyncPrefs.getDouble('spaceWidth') ?? 320;
-    double splitWidth = await asyncPrefs.getDouble('splitWidth') ?? 100;
-
-    // Text settings
-    String fontFamily = await asyncPrefs.getString('fontFamily') ?? 'GeistMono';
-    double keyFontSize = await asyncPrefs.getDouble('keyFontSize') ?? 20;
-    double spaceFontSize = await asyncPrefs.getDouble('spaceFontSize') ?? 14;
-    FontWeight fontWeight = FontWeight
-        .values[await asyncPrefs.getInt('fontWeight') ?? FontWeight.w500.index];
-    Color keyTextColor =
-        Color(await asyncPrefs.getInt('keyTextColor') ?? 0xFFFFFFFF);
-    Color keyTextColorNotPressed =
-        Color(await asyncPrefs.getInt('keyTextColorNotPressed') ?? 0xFF000000);
-
-    // Mouse settings
-    bool enableMouse = await asyncPrefs.getBool('enableMouse') ?? false;
-    String mouseLayoutName =
-        await asyncPrefs.getString('mouseLayoutName') ?? 'Simple Mouse';
-    double mouseWidth = await asyncPrefs.getDouble('mouseWidth') ?? 130;
-    double mouseHeight = await asyncPrefs.getDouble('mouseHeight') ?? 200;
-    double mouseBorderRadius =
-        await asyncPrefs.getDouble('mouseBorderRadius') ?? 20;
-    double mouseGap = await asyncPrefs.getDouble('mouseGap') ?? 40;
+    final prefs = await _prefsService.loadAllPreferences();
 
     setState(() {
       // General settings
-      _launchAtStartup = launchAtStartup;
-      _autoHideEnabled = autoHideEnabled;
-      _autoHideDuration = autoHideDuration;
-      _keyboardLayoutName = keyboardLayoutName;
-      _showAdvancedSettings = showAdvancedSettings;
-      _useUserLayout = useUserLayout;
-      _showAltLayout = showAltLayout;
-      _kanataEnabled = kanataEnabled;
-
-      // Appearance settings
-      _opacity = opacity;
-      _keyColorPressed = keyColorPressed;
-      _keyColorNotPressed = keyColorNotPressed;
-      _markerColor = markerColor;
-      _markerColorNotPressed = markerColorNotPressed;
-      _markerOffset = markerOffset;
-      _markerWidth = markerWidth;
-      _markerHeight = markerHeight;
-      _markerBorderRadius = markerBorderRadius;
+      _launchAtStartup = prefs['launchAtStartup'];
+      _autoHideEnabled = prefs['autoHideEnabled'];
+      _autoHideDuration = prefs['autoHideDuration'];
+      _opacity = prefs['opacity'];
+      _keyboardLayoutName = prefs['keyboardLayoutName'];
 
       // Keyboard settings
-      _keymapStyle = keymapStyle;
-      _showTopRow = showTopRow;
-      _showGraveKey = showGraveKey;
-      _keySize = keySize;
-      _keyBorderRadius = keyBorderRadius;
-      _keyPadding = keyPadding;
-      _spaceWidth = spaceWidth;
-      _splitWidth = splitWidth;
+      _keymapStyle = prefs['keymapStyle'];
+      _showTopRow = prefs['showTopRow'];
+      _showGraveKey = prefs['showGraveKey'];
+      _keySize = prefs['keySize'];
+      _keyBorderRadius = prefs['keyBorderRadius'];
+      _keyBorderThickness = prefs['keyBorderThickness'];
+      _keyPadding = prefs['keyPadding'];
+      _spaceWidth = prefs['spaceWidth'];
+      _splitWidth = prefs['splitWidth'];
+      _lastRowSplitWidth = prefs['lastRowSplitWidth'];
 
       // Text settings
-      _fontFamily = fontFamily;
-      _keyFontSize = keyFontSize;
-      _spaceFontSize = spaceFontSize;
-      _fontWeight = fontWeight;
-      _keyTextColor = keyTextColor;
-      _keyTextColorNotPressed = keyTextColorNotPressed;
+      _fontFamily = prefs['fontFamily'];
+      _fontWeight = prefs['fontWeight'];
+      _keyFontSize = prefs['keyFontSize'];
+      _spaceFontSize = prefs['spaceFontSize'];
 
-      // Mouse settings
-      _enableMouse = enableMouse;
-      _mouseLayoutName = mouseLayoutName;
-      _mouseWidth = mouseWidth;
-      _mouseHeight = mouseHeight;
-      _mouseBorderRadius = mouseBorderRadius;
-      _mouseGap = mouseGap;
+      // Markers settings
+      _markerOffset = prefs['markerOffset'];
+      _markerWidth = prefs['markerWidth'];
+      _markerHeight = prefs['markerHeight'];
+      _markerBorderRadius = prefs['markerBorderRadius'];
+
+      // Colors settings
+      _keyColorPressed = prefs['keyColorPressed'];
+      _keyColorNotPressed = prefs['keyColorNotPressed'];
+      _markerColor = prefs['markerColor'];
+      _markerColorNotPressed = prefs['markerColorNotPressed'];
+      _keyTextColor = prefs['keyTextColor'];
+      _keyTextColorNotPressed = prefs['keyTextColorNotPressed'];
+      _keyBorderColorPressed = prefs['keyBorderColorPressed'];
+      _keyBorderColorNotPressed = prefs['keyBorderColorNotPressed'];
+
+      // Animations settings
+      _animationEnabled = prefs['animationEnabled'];
+      _animationStyle = prefs['animationStyle'];
+      _animationDuration = prefs['animationDuration'];
+      _animationScale = prefs['animationScale'];
+
+      // HotKey settings
+      _hotKeysEnabled = prefs['hotKeysEnabled'];
+      _visibilityHotKey = prefs['visibilityHotKey'];
+      _autoHideHotKey = prefs['autoHideHotKey'];
+      _toggleMoveHotKey = prefs['toggleMoveHotKey'];
+      _preferencesHotKey = prefs['preferencesHotKey'];
+
+      // Learn settings
+      _learningModeEnabled = prefs['learningModeEnabled'] ?? false;
+      _pinkyLeftColor = prefs['pinkyLeftColor'];
+      _ringLeftColor = prefs['ringLeftColor'];
+      _middleLeftColor = prefs['middleLeftColor'];
+      _indexLeftColor = prefs['indexLeftColor'];
+      _indexRightColor = prefs['indexRightColor'];
+      _middleRightColor = prefs['middleRightColor'];
+      _ringRightColor = prefs['ringRightColor'];
+      _pinkyRightColor = prefs['pinkyRightColor'];
+
+      // Advanced settings
+      _advancedSettingsEnabled = prefs['advancedSettingsEnabled'];
+      _useUserLayout = prefs['useUserLayout'];
+      _showAltLayout = prefs['showAltLayout'];
+      _customFontEnabled = prefs['customFontEnabled'];
+      _use6ColLayout = prefs['use6ColLayout'];
+      _kanataEnabled = prefs['kanataEnabled'];
+      _keyboardFollowsMouse = prefs['keyboardFollowsMouse'] ?? false;
     });
   }
 
   Future<void> _savePreferences() async {
-    // General settings
-    await asyncPrefs.setBool('launchAtStartup', _launchAtStartup);
-    await asyncPrefs.setBool('autoHideEnabled', _autoHideEnabled);
-    await asyncPrefs.setDouble('autoHideDuration', _autoHideDuration);
-    await asyncPrefs.setString('layout', _keyboardLayoutName);
-    await asyncPrefs.setBool('showAdvancedSettings', _showAdvancedSettings);
-    await asyncPrefs.setBool('useUserLayout', _useUserLayout);
-    await asyncPrefs.setBool('showAltLayout', _showAltLayout);
-    await asyncPrefs.setBool('kanataEnabled', _kanataEnabled);
+    final prefs = {
+      // General settings
+      'launchAtStartup': _launchAtStartup,
+      'autoHideEnabled': _autoHideEnabled,
+      'autoHideDuration': _autoHideDuration,
+      'opacity': _opacity,
+      'keyboardLayoutName': _keyboardLayoutName,
 
-    // Appearance settings
-    await asyncPrefs.setDouble('opacity', _opacity);
-    await asyncPrefs.setInt('keyColorPressed', _keyColorPressed.toARGB32());
-    await asyncPrefs.setInt(
-        'keyColorNotPressed', _keyColorNotPressed.toARGB32());
-    await asyncPrefs.setInt('markerColor', _markerColor.toARGB32());
-    await asyncPrefs.setInt(
-        'markerColorNotPressed', _markerColorNotPressed.toARGB32());
-    await asyncPrefs.setDouble('markerOffset', _markerOffset);
-    await asyncPrefs.setDouble('markerWidth', _markerWidth);
-    await asyncPrefs.setDouble('markerHeight', _markerHeight);
-    await asyncPrefs.setDouble('markerBorderRadius', _markerBorderRadius);
+      // Keyboard settings
+      'keymapStyle': _keymapStyle,
+      'showTopRow': _showTopRow,
+      'showGraveKey': _showGraveKey,
+      'keySize': _keySize,
+      'keyBorderRadius': _keyBorderRadius,
+      'keyBorderThickness': _keyBorderThickness,
+      'keyPadding': _keyPadding,
+      'spaceWidth': _spaceWidth,
+      'splitWidth': _splitWidth,
+      'lastRowSplitWidth': _lastRowSplitWidth,
 
-    // Keyboard settings
-    await asyncPrefs.setString('keymapStyle', _keymapStyle);
-    await asyncPrefs.setBool('showTopRow', _showTopRow);
-    await asyncPrefs.setBool('showGraveKey', _showGraveKey);
-    await asyncPrefs.setDouble('keySize', _keySize);
-    await asyncPrefs.setDouble('keyBorderRadius', _keyBorderRadius);
-    await asyncPrefs.setDouble('keyPadding', _keyPadding);
-    await asyncPrefs.setDouble('spaceWidth', _spaceWidth);
-    await asyncPrefs.setDouble('splitWidth', _splitWidth);
+      // Text settings
+      'fontFamily': _fontFamily,
+      'fontWeight': _fontWeight,
+      'keyFontSize': _keyFontSize,
+      'spaceFontSize': _spaceFontSize,
 
-    // Text settings
-    await asyncPrefs.setString('fontFamily', _fontFamily);
-    await asyncPrefs.setDouble('keyFontSize', _keyFontSize);
-    await asyncPrefs.setDouble('spaceFontSize', _spaceFontSize);
-    await asyncPrefs.setInt('fontWeight', _fontWeight.index);
-    await asyncPrefs.setInt('keyTextColor', _keyTextColor.toARGB32());
-    await asyncPrefs.setInt(
-        'keyTextColorNotPressed', _keyTextColorNotPressed.toARGB32());
+      // Markers settings
+      'markerOffset': _markerOffset,
+      'markerWidth': _markerWidth,
+      'markerHeight': _markerHeight,
+      'markerBorderRadius': _markerBorderRadius,
 
-    // Mouse settings
-    await asyncPrefs.setBool('enableMouse', _enableMouse);
-    await asyncPrefs.setString('mouseLayoutName', _mouseLayoutName);
-    await asyncPrefs.setDouble('mouseWidth', _mouseWidth);
-    await asyncPrefs.setDouble('mouseHeight', _mouseHeight);
-    await asyncPrefs.setDouble('mouseBorderRadius', _mouseBorderRadius);
-    await asyncPrefs.setDouble('mouseGap', _mouseGap);
+      // Colors settings
+      'keyColorPressed': _keyColorPressed,
+      'keyColorNotPressed': _keyColorNotPressed,
+      'markerColor': _markerColor,
+      'markerColorNotPressed': _markerColorNotPressed,
+      'keyTextColor': _keyTextColor,
+      'keyTextColorNotPressed': _keyTextColorNotPressed,
+      'keyBorderColorPressed': _keyBorderColorPressed,
+      'keyBorderColorNotPressed': _keyBorderColorNotPressed,
+
+      // Animations settings
+      'animationEnabled': _animationEnabled,
+      'animationStyle': _animationStyle,
+      'animationDuration': _animationDuration,
+      'animationScale': _animationScale,
+
+      // HotKey settings
+      'hotKeysEnabled': _hotKeysEnabled,
+      'visibilityHotKey': _visibilityHotKey,
+      'autoHideHotKey': _autoHideHotKey,
+      'toggleMoveHotKey': _toggleMoveHotKey,
+      'preferencesHotKey': _preferencesHotKey,
+
+      // Learn settings
+      'learningModeEnabled': _learningModeEnabled,
+      'pinkyLeftColor': _pinkyLeftColor,
+      'ringLeftColor': _ringLeftColor,
+      'middleLeftColor': _middleLeftColor,
+      'indexLeftColor': _indexLeftColor,
+      'indexRightColor': _indexRightColor,
+      'middleRightColor': _middleRightColor,
+      'ringRightColor': _ringRightColor,
+      'pinkyRightColor': _pinkyRightColor,
+
+      // Advanced settings
+      'advancedSettingsEnabled': _advancedSettingsEnabled,
+      'useUserLayout': _useUserLayout,
+      'showAltLayout': _showAltLayout,
+      'customFontEnabled': _customFontEnabled,
+      'use6ColLayout': _use6ColLayout,
+      'kanataEnabled': _kanataEnabled,
+      'keyboardFollowsMouse': _keyboardFollowsMouse,
+    };
+
+    await _prefsService.saveAllPreferences(prefs);
   }
 
   void _updateMainWindow(dynamic method, dynamic value) async {
@@ -301,6 +358,8 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       value = value.toARGB32();
     } else if (value is FontWeight) {
       value = value.index;
+    } else if (value is HotKey) {
+      value = jsonEncode(value.toJson());
     }
     await DesktopMultiWindow.invokeMethod(0, method, value);
     _savePreferences();
@@ -322,20 +381,24 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       ],
       home: Builder(builder: (context) {
         return Scaffold(
-          appBar: AppBar(
-            toolbarHeight: 100,
-            title: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 100),
-              child: _buildTabBar(),
-            ),
-            automaticallyImplyLeading: false,
-          ),
-          body: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 60.0),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20.0, 0, 16.0, 20.0),
-              child: _buildCurrentTabContent(),
-            ),
+          body: Row(
+            children: [
+              _buildNavigationPanel(context),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding:
+                            const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
+                        child: _buildCurrentTabContent(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         );
       }),
@@ -343,967 +406,433 @@ class _PreferencesScreenState extends State<PreferencesScreen>
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildNavigationPanel(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final double drawerWidth = 200;
+
     return Container(
-      padding: const EdgeInsets.all(8),
-      child: Row(
+      width: drawerWidth,
+      color: Theme.of(context).drawerTheme.backgroundColor ??
+          colorScheme.surfaceContainer,
+      alignment: Alignment.center,
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          'General',
-          'Appearance',
-          'Keyboard',
-          'Mouse',
-          'Text',
-          'About'
-        ].map((tab) => _buildTabButton(tab)).toList(),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20.0),
+            child: Image.asset(
+              'assets/images/app_icon.png',
+              width: 60,
+              height: 60,
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              children: [
+                'General',
+                'Keyboard',
+                'Text',
+                'Markers',
+                'Colors',
+                'Animations',
+                'Hotkeys',
+                'Learn',
+                'Advanced',
+                'About',
+              ].map((tab) => _buildDrawerItem(context, tab)).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildTabButton(String tabName) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    bool isActive = _currentTab == tabName;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: ElevatedButton(
-        onPressed: () => setState(() => _currentTab = tabName),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isActive ? colorScheme.primary : colorScheme.surface,
-          foregroundColor:
-              isActive ? colorScheme.onPrimary : colorScheme.primary,
-          elevation: 1,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          side: BorderSide(
-            color: colorScheme.primary,
-            width: 2,
+  Widget _buildDrawerItem(BuildContext context, String tabName) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isSelected = _currentTab == tabName;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? colorScheme.surface : Colors.transparent,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5.0),
+        child: ListTile(
+          leading: Icon(
+            _getIconForTab(tabName).icon,
+            color: isSelected
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant.withAlpha(192),
           ),
-        ),
-        child: Text(
-          tabName,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
+          title: Text(
+            tabName,
+            style: TextStyle(
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              fontSize: 16,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withAlpha(192),
+            ),
           ),
+          onTap: () {
+            setState(() => _currentTab = tabName);
+          },
+          selected: isSelected,
         ),
       ),
     );
+  }
+
+  Icon _getIconForTab(String tabName) {
+    switch (tabName) {
+      case 'General':
+        return const Icon(LucideIcons.settings2);
+      case 'Keyboard':
+        return const Icon(LucideIcons.keyboard);
+      case 'Text':
+        return const Icon(LucideIcons.type);
+      case 'Markers':
+        return const Icon(LucideIcons.mapPin);
+      case 'Colors':
+        return const Icon(LucideIcons.palette);
+      case 'Animations':
+        return const Icon(LucideIcons.sparkles);
+      case 'Hotkeys':
+        return const Icon(LucideIcons.layers);
+      case 'Learn':
+        return const Icon(LucideIcons.graduationCap);
+      case 'Advanced':
+        return const Icon(LucideIcons.userCog2);
+      case 'About':
+        return const Icon(LucideIcons.info);
+      default:
+        return const Icon(LucideIcons.menu);
+    }
   }
 
   Widget _buildCurrentTabContent() {
     switch (_currentTab) {
       case 'General':
-        return _buildGeneralTab();
-      case 'Appearance':
-        return _buildAppearanceTab();
-      case 'Text':
-        return _buildTextTab();
-      case 'Keyboard':
-        return _buildKeyboardTab();
-      case 'Mouse':
-        return _buildMouseTab();
-      case 'About':
-        return _buildAboutTab();
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildGeneralTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildSectionTitle('General Settings'),
-        _buildToggleOption('Open on system startup', _launchAtStartup, (value) {
-          setState(() => _launchAtStartup = value);
-          _updateMainWindow('updateLaunchAtStartup', value);
-        }),
-        _buildToggleOption('Auto-hide keyboard', _autoHideEnabled, (value) {
-          setState(() => _autoHideEnabled = value);
-          _updateMainWindow('updateAutoHideEnabled', value);
-        }),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          firstChild: const SizedBox.shrink(),
-          secondChild: _buildSliderOption(
-              'Auto-hide duration (seconds)', _autoHideDuration, 0.5, 5.0, 9,
-              (value) {
+        return GeneralTab(
+          launchAtStartup: _launchAtStartup,
+          autoHideEnabled: _autoHideEnabled,
+          autoHideDuration: _autoHideDuration,
+          keyboardLayoutName: _keyboardLayoutName,
+          opacity: _opacity,
+          updateLaunchAtStartup: (value) {
+            setState(() => _launchAtStartup = value);
+            _updateMainWindow('updateLaunchAtStartup', value);
+          },
+          updateAutoHideEnabled: (value) {
+            setState(() => _autoHideEnabled = value);
+            _updateMainWindow('updateAutoHideEnabled', value);
+          },
+          updateAutoHideDuration: (value) {
             double roundedValue = (value * 2).round() / 2;
             setState(() => _autoHideDuration = roundedValue);
             _updateMainWindow('updateAutoHideDuration', roundedValue);
-          }, valueDisplayFormatter: (value) => value.toStringAsFixed(1)),
-          crossFadeState: _autoHideEnabled
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          sizeCurve: Curves.easeInOut,
-        ),
-        _buildDropdownOption('Layout', _keyboardLayoutName,
-            availableLayouts.map((layout) => (layout.name)).toList(),
-            subtitle: _autoHideEnabled
-                ? 'OverKeys must remain visible to avoid losing focus when typing in the dropdown. You may turn off auto-hide under General settings.'
-                : null, (value) {
-          setState(() => _keyboardLayoutName = value!);
-          _updateMainWindow('updateLayout', value);
-        }),
-        _buildToggleOption('Show advanced settings', _showAdvancedSettings,
-            (value) {
-          setState(() => _showAdvancedSettings = value);
-          _savePreferences();
-        }),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          firstChild: const SizedBox.shrink(),
-          secondChild: Column(
-            children: [
-              _buildToggleOption(
-                  'Use custom layout from config', _useUserLayout,
-                  subtitle:
-                      'Sets layout to user-defined defaultUserLayout. Make sure that the layout is saved in the config file.',
-                  (value) {
-                if (value && _kanataEnabled) {
-                  // If turning on useUserLayout, turn off kanataEnabled
-                  setState(() {
-                    _useUserLayout = value;
-                    _kanataEnabled = false;
-                  });
-                  _updateMainWindow('updateKanataEnabled', false);
-                } else {
-                  setState(() => _useUserLayout = value);
-                }
-                _updateMainWindow('updateUseUserLayout', value);
-              }),
-              _buildToggleOption('Show alternative layout', _showAltLayout,
-                  (value) {
-                setState(() => _showAltLayout = value);
-                _updateMainWindow('updateShowAltLayout', value);
-              }),
-              _buildToggleOption('Connect to Kanata', _kanataEnabled,
-                  subtitle:
-                      'Make sure that Kanata and OverKeys are using the same port. Restart OverKeys if config file changes were made to apply changes.',
-                  (value) {
-                if (value && _useUserLayout) {
-                  // If turning on kanataEnabled, turn off useUserLayout
-                  setState(() {
-                    _kanataEnabled = value;
-                    _useUserLayout = false;
-                  });
-                  _updateMainWindow('updateUseUserLayout', false);
-                } else {
-                  setState(() => _kanataEnabled = value);
-                }
-                _updateMainWindow('updateKanataEnabled', value);
-              }),
-              _buildOpenConfigButton(),
-            ],
-          ),
-          crossFadeState: _showAdvancedSettings
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          sizeCurve: Curves.easeInOut,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAppearanceTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildSectionTitle('Appearance Settings'),
-        _buildSliderOption('Opacity', _opacity, 0.1, 1.0, 18, (value) {
-          setState(() => _opacity = value);
-          _updateMainWindow('updateOpacity', value);
-        }),
-        _buildColorOption('Key color (pressed)', _keyColorPressed, (color) {
-          setState(() => _keyColorPressed = color);
-          _updateMainWindow('updateKeyColorPressed', color);
-        }),
-        _buildColorOption('Key color (not pressed)', _keyColorNotPressed,
-            (color) {
-          setState(() => _keyColorNotPressed = color);
-          _updateMainWindow('updateKeyColorNotPressed', color);
-        }),
-        _buildSectionTitle('Tactile Markers'),
-        _buildColorOption('Marker color (pressed)', _markerColor, (color) {
-          setState(() => _markerColor = color);
-          _updateMainWindow('updateMarkerColor', color);
-        }),
-        _buildColorOption('Marker color (not pressed)', _markerColorNotPressed,
-            (color) {
-          setState(() => _markerColorNotPressed = color);
-          _updateMainWindow('updateMarkerColorNotPressed', color);
-        }),
-        _buildSliderOption('Marker offset', _markerOffset, 0, 20, 20, (value) {
-          setState(() => _markerOffset = value);
-          _updateMainWindow('updateMarkerOffset', value);
-        }),
-        _buildSliderOption('Marker width', _markerWidth, 0, 20, 20,
-            subtitle: _showAltLayout
-                ? 'When alternative layout is shown, marker width appear at half the size (width × 0.5)'
-                : null, (value) {
-          setState(() => _markerWidth = value);
-          _updateMainWindow('updateMarkerWidth', value);
-        }),
-        _buildSliderOption('Marker height', _markerHeight, 0, 10, 10,
-            subtitle: _showAltLayout
-                ? 'When alternative layout is shown, marker height is not used and instead equals the marker width after computation'
-                : null, (value) {
-          setState(() => _markerHeight = value);
-          _updateMainWindow('updateMarkerHeight', value);
-        }),
-        _buildSliderOption(
-            'Marker border radius', _markerBorderRadius, 0, 10, 10, (value) {
-          setState(() => _markerBorderRadius = value);
-          _updateMainWindow('updateMarkerBorderRadius', value);
-        }),
-      ],
-    );
-  }
-
-  Widget _buildKeyboardTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildSectionTitle('Keyboard Layout'),
-        _buildDropdownOption('Keymap style', _keymapStyle,
-            ['Staggered', 'Matrix', 'Split Matrix'], (value) {
-          if (value == 'Split Matrix' && _spaceWidth > 300) {
-            _updateMainWindow('updateSpaceWidth', 220.0);
-            setState(() => _spaceWidth = 220);
-          }
-          setState(() => _keymapStyle = value!);
-          _updateMainWindow('updateKeymapStyle', value);
-        }),
-        _buildToggleOption('Show top row', _showTopRow,
-            subtitle:
-                'Recommended to toggle when keyboard is visible or auto-hide is off. Toggling while hidden may cause rendering errors.',
-            (value) {
-          setState(() => _showTopRow = value);
-          _updateMainWindow('updateShowTopRow', value);
-        }),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          firstChild: const SizedBox.shrink(),
-          secondChild:
-              _buildToggleOption('Show grave key', _showGraveKey, (value) {
+          },
+          updateOpacity: (value) {
+            setState(() => _opacity = value);
+            _updateMainWindow('updateOpacity', value);
+          },
+          updateKeyboardLayoutName: (value) {
+            setState(() => _keyboardLayoutName = value);
+            _updateMainWindow('updateLayout', value);
+          },
+        );
+      case 'Keyboard':
+        return KeyboardTab(
+          keymapStyle: _keymapStyle,
+          showTopRow: _showTopRow,
+          showGraveKey: _showGraveKey,
+          keySize: _keySize,
+          keyBorderRadius: _keyBorderRadius,
+          keyPadding: _keyPadding,
+          spaceWidth: _spaceWidth,
+          splitWidth: _splitWidth,
+          lastRowSplitWidth: _lastRowSplitWidth,
+          keyBorderThickness: _keyBorderThickness,
+          updateKeymapStyle: (value) {
+            setState(() => _keymapStyle = value);
+            _updateMainWindow('updateKeymapStyle', value);
+          },
+          updateShowTopRow: (value) {
+            setState(() => _showTopRow = value);
+            _updateMainWindow('updateShowTopRow', value);
+          },
+          updateShowGraveKey: (value) {
             setState(() => _showGraveKey = value);
             _updateMainWindow('updateShowGraveKey', value);
-          }),
-          crossFadeState: _showTopRow
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          sizeCurve: Curves.easeInOut,
-        ),
-        _buildSectionTitle('Key Dimensions'),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          firstChild: const SizedBox.shrink(),
-          secondChild: _buildSliderOption(
-              'Split width', _splitWidth, 30, 200, 34, (value) {
+          },
+          updateKeySize: (value) {
+            setState(() => _keySize = value);
+            _updateMainWindow('updateKeySize', value);
+          },
+          updateKeyBorderRadius: (value) {
+            setState(() => _keyBorderRadius = value);
+            _updateMainWindow('updateKeyBorderRadius', value);
+          },
+          updateKeyPadding: (value) {
+            setState(() => _keyPadding = value);
+            _updateMainWindow('updateKeyPadding', value);
+          },
+          updateSpaceWidth: (value) {
+            setState(() => _spaceWidth = value);
+            _updateMainWindow('updateSpaceWidth', value);
+          },
+          updateSplitWidth: (value) {
             setState(() => _splitWidth = value);
             _updateMainWindow('updateSplitWidth', value);
-          }),
-          crossFadeState: _keymapStyle == 'Split Matrix'
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          sizeCurve: Curves.easeInOut,
-        ),
-        _buildSliderOption('Key size', _keySize, 40, 60, 40, (value) {
-          setState(() => _keySize = value);
-          _updateMainWindow('updateKeySize', value);
-        }),
-        _buildSliderOption('Key border radius', _keyBorderRadius, 0, 30, 30,
-            (value) {
-          setState(() => _keyBorderRadius = value);
-          _updateMainWindow('updateKeyBorderRadius', value);
-        }),
-        _buildSliderOption('Key padding', _keyPadding, 0, 10, 20, (value) {
-          setState(() => _keyPadding = value);
-          _updateMainWindow('updateKeyPadding', value);
-        }),
-        _buildSliderOption(
-            'Space width',
-            _spaceWidth,
-            120,
-            (_keymapStyle == 'Split Matrix') ? 300 : 500,
-            (_keymapStyle == 'Split Matrix') ? 90 : 190, (value) {
-          setState(() => _spaceWidth = value);
-          _updateMainWindow('updateSpaceWidth', value);
-        }),
-      ],
-    );
-  }
-
-  Widget _buildTextTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildSectionTitle('Text Settings'),
-        _buildDropdownOption('Font style', _fontFamily, [
-          'Berkeley Mono',
-          'Cascadia Mono',
-          'Comic Mono',
-          'CommitMono',
-          'Consolas',
-          'Courier',
-          'Cousine',
-          'Dank Mono',
-          'DM Mono',
-          'Droid Sans Mono',
-          'Fira Code',
-          'Fira Mono',
-          'Geist',
-          'GeistMono',
-          'Google Sans',
-          'Hack',
-          'IBM Plex Mono',
-          'Inconsolata',
-          'Input',
-          'Inter',
-          'Iosevka',
-          'JetBrains Mono',
-          'Manrope',
-          'Meslo',
-          'Monaspace Argon',
-          'Monaspace Krypton',
-          'Monaspace Neon',
-          'Monaspace Radon',
-          'Monaspace Xenon',
-          'Monocraft',
-          'MonoLisa',
-          'mononoki',
-          'Montserrat',
-          'Nunito',
-          'Poppins',
-          'Roboto',
-          'Roboto Mono',
-          'Source Code Pro',
-          'Source Sans Pro',
-          'Ubuntu',
-          'Ubuntu Mono',
-          'Victor Mono',
-        ], (value) {
-          setState(() => _fontFamily = value!);
-          _updateMainWindow('updateFontFamily', value);
-        },
-            subtitle:
-                'Make sure that the font is installed in your system. Falls back to Geist Mono.${_autoHideEnabled ? ' OverKeys must remain visible to avoid losing focus when typing in the dropdown. You may turn off auto-hide under General settings.' : ''}'),
-        _buildSliderOption('Key font size', _keyFontSize, 12, 32, 40, (value) {
-          setState(() => _keyFontSize = value);
-          _updateMainWindow('updateKeyFontSize', value);
-        }),
-        _buildSliderOption('Space font size', _spaceFontSize, 12, 32, 40,
-            (value) {
-          setState(() => _spaceFontSize = value);
-          _updateMainWindow('updateSpaceFontSize', value);
-        }),
-        _buildDropdownOption(
-            'Font weight',
-            _fontWeight == FontWeight.w100
-                ? 'Thin'
-                : _fontWeight == FontWeight.w200
-                    ? 'ExtraLight'
-                    : _fontWeight == FontWeight.w300
-                        ? 'Light'
-                        : _fontWeight == FontWeight.normal
-                            ? 'Normal'
-                            : _fontWeight == FontWeight.w500
-                                ? 'Medium'
-                                : _fontWeight == FontWeight.w600
-                                    ? 'SemiBold'
-                                    : _fontWeight == FontWeight.bold
-                                        ? 'Bold'
-                                        : _fontWeight == FontWeight.w800
-                                            ? 'ExtraBold'
-                                            : 'Black',
-            [
-              'Thin',
-              'ExtraLight',
-              'Light',
-              'Normal',
-              'Medium',
-              'SemiBold',
-              'Bold',
-              'ExtraBold',
-              'Black'
-            ],
-            subtitle: _autoHideEnabled
-                ? 'OverKeys must remain visible to avoid losing focus when typing in the dropdown. You may turn off auto-hide under General settings.'
-                : null, (value) {
-          setState(() {
-            switch (value) {
-              case 'Thin':
-                _fontWeight = FontWeight.w100;
-                break;
-              case 'ExtraLight':
-                _fontWeight = FontWeight.w200;
-                break;
-              case 'Light':
-                _fontWeight = FontWeight.w300;
-                break;
-              case 'Normal':
-                _fontWeight = FontWeight.normal;
-                break;
-              case 'Medium':
-                _fontWeight = FontWeight.w500;
-                break;
-              case 'SemiBold':
-                _fontWeight = FontWeight.w600;
-                break;
-              case 'Bold':
-                _fontWeight = FontWeight.bold;
-                break;
-              case 'ExtraBold':
-                _fontWeight = FontWeight.w800;
-                break;
-              case 'Black':
-                _fontWeight = FontWeight.w900;
-                break;
-            }
-          });
-          _updateMainWindow('updateFontWeight', _fontWeight.index);
-        }),
-        _buildColorOption('Text color (pressed)', _keyTextColor, (color) {
-          setState(() => _keyTextColor = color);
-          _updateMainWindow('updateKeyTextColor', color);
-        }),
-        _buildColorOption('Text color (not pressed)', _keyTextColorNotPressed,
-            (color) {
-          setState(() => _keyTextColorNotPressed = color);
-          _updateMainWindow('updateKeyTextColorNotPressed', color);
-        }),
-      ],
-    );
-  }
-
-  Widget _buildMouseTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildSectionTitle('Mouse Settings'),
-        _buildToggleOption('Enable Mouse', _enableMouse, (value) {
-          setState(() => _enableMouse = value);
-          _updateMainWindow('updateEnableMouse', value);
-        }),
-        AnimatedCrossFade(
-          duration: const Duration(milliseconds: 300),
-          firstChild: const SizedBox.shrink(),
-          secondChild: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _mouseWidth = 130;
-                        _mouseHeight = 200;
-                        _mouseBorderRadius = 20;
-                        _aspectRatio = _mouseWidth / _mouseHeight;
-                        _updateMainWindow('updateMouseWidth', _mouseWidth);
-                        _updateMainWindow('updateMouseHeight', _mouseHeight);
-                        _updateMainWindow(
-                            'updateMouseBorderRadius', _mouseBorderRadius);
-                      });
-                    },
-                    child: const Text('Reset to defaults'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              _buildDropdownOption(
-                'Mouse Layout',
-                _mouseLayoutName,
-                availableMouseLayouts.map((layout) => layout.name).toList(),
-                (value) {
-                  setState(() => _mouseLayoutName = value!);
-                  _updateMainWindow('updateMouseLayout', value);
-                },
-              ),
-              _buildToggleOption('Lock aspect ratio', _lockAspectRatio,
-                  (value) {
-                setState(() {
-                  _lockAspectRatio = value;
-                  if (value) {
-                    _aspectRatio = _mouseWidth / _mouseHeight;
-                  }
-                });
-              }),
-              _buildSliderOption('Mouse width', _mouseWidth, 100, 350, 50,
-                  (value) {
-                setState(() {
-                  _mouseWidth = value;
-                  if (_lockAspectRatio) {
-                    // Clamp the width first, then calculate height
-                    double clampedWidth = value.clamp(100.0, 350.0);
-                    _mouseHeight =
-                        (clampedWidth / _aspectRatio).clamp(100.0, 300.0);
-                    _updateMainWindow('updateMouseHeight', _mouseHeight);
-                  }
-                  _updateMainWindow('updateMouseWidth', value);
-                });
-              }),
-              _buildSliderOption('Mouse height', _mouseHeight, 100, 300, 40,
-                  (value) {
-                setState(() {
-                  _mouseHeight = value;
-                  if (_lockAspectRatio) {
-                    // Clamp the height first, then calculate width
-                    double clampedHeight = value.clamp(100.0, 300.0);
-                    _mouseWidth =
-                        (clampedHeight * _aspectRatio).clamp(100.0, 350.0);
-                    _updateMainWindow('updateMouseWidth', _mouseWidth);
-                  }
-                  _updateMainWindow('updateMouseHeight', value);
-                });
-              }),
-              _buildSliderOption(
-                  'Mouse border radius', _mouseBorderRadius, 0, 50, 50,
-                  (value) {
-                setState(() => _mouseBorderRadius = value);
-                _updateMainWindow('updateMouseBorderRadius', value);
-              }),
-              _buildSliderOption(
-                  'Gap between mouse and keyboard', _mouseGap, 0, 100, 20,
-                  (value) {
-                setState(() => _mouseGap = value);
-                _updateMainWindow('updateMouseGap', value);
-              }),
-            ],
-          ),
-          crossFadeState: _enableMouse
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-          sizeCurve: Curves.easeInOut,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAboutTab() {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-
-    return SizedBox(
-      width: double.infinity,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _buildSectionTitle('About'),
-          const SizedBox(height: 20),
-          Image.asset('assets/images/app_icon.png', width: 120),
-          const SizedBox(height: 20),
-          Text('OverKeys',
-              style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900)),
-          const SizedBox(height: 20),
-          Text('Version: $_appVersion',
-              style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          Text('© 2024 Angelo Convento',
-              style: TextStyle(
-                  color: colorScheme.onSurface.withAlpha(153),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500)),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: () async {
-              await launchUrl(
-                  Uri.parse('https://github.com/conventoangelo/overkeys'),
-                  mode: LaunchMode.externalApplication);
-            },
-            icon: ImageIcon(
-              AssetImage('assets/images/github-mark.png'),
-              size: 20,
-            ),
-            label: Text(
-              'View on GitHub',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(200, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Text(
-        title,
-        style: TextStyle(
-            color: colorScheme.onSurface,
-            fontSize: 20,
-            fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Widget _buildToggleOption(String label, bool value, Function(bool) onChanged,
-      {String? subtitle}) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    const WidgetStateProperty<Icon> thumbIcon =
-        WidgetStateProperty<Icon>.fromMap(
-      <WidgetStatesConstraint, Icon>{
-        WidgetState.selected: Icon(Icons.check),
-        WidgetState.any: Icon(Icons.close),
-      },
-    );
-    return _buildOptionContainer(
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16)),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                        color: colorScheme.onSurface.withAlpha(153),
-                        fontSize: 14.0),
-                    softWrap: true,
-                    overflow: TextOverflow.visible,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Switch(
-            thumbIcon: thumbIcon,
-            value: value,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDropdownOption(String label, String value, List<String> options,
-      Function(String?) onChanged,
-      {String? subtitle}) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    final TextEditingController controller = TextEditingController(text: value);
-
-    return _buildOptionContainer(
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16)),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                        color: colorScheme.onSurface.withAlpha(153),
-                        fontSize: 14.0),
-                    softWrap: true,
-                    overflow: TextOverflow.visible,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 40),
-          DropdownMenu<String>(
-            controller: controller,
-            initialSelection: value,
-            requestFocusOnTap: true,
-            enableFilter: true,
-            width: 210,
-            menuHeight: 300,
-            dropdownMenuEntries: options
-                .map((String option) => DropdownMenuEntry<String>(
-                      value: option,
-                      label: option,
-                      style: MenuItemButton.styleFrom(
-                        textStyle: TextStyle(
-                          fontFamily: option,
-                          fontFamilyFallback: const ['Manrope'],
-                          fontSize: 15,
-                        ),
-                      ),
-                    ))
-                .toList(),
-            onSelected: (String? newValue) {
-              if (newValue != null) {
-                onChanged(newValue);
-              }
-            },
-            textStyle: TextStyle(
-              fontFamily: value,
-              fontFamilyFallback: const ['Manrope'],
-              fontSize: 15,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOpenConfigButton() {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-
-    return _buildOptionContainer(
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Open config file',
-                    style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16)),
-                Text(
-                  'Turn related advanced setting off then on again to apply changes',
-                  style: TextStyle(
-                      color: colorScheme.onSurface.withAlpha(153),
-                      fontSize: 14.0),
-                  softWrap: true,
-                  overflow: TextOverflow.visible,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          ElevatedButton.icon(
-            icon: Icon(Icons.file_open, color: colorScheme.primary),
-            label: Text('Open',
-                style: TextStyle(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                )),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.surfaceContainerHighest,
-              elevation: 2,
-              minimumSize: const Size(100, 45),
-              side: BorderSide(color: colorScheme.primary),
-            ),
-            onPressed: () async {
-              try {
-                final configService = ConfigService();
-                final configPath = await configService.configPath;
-                final file = File(configPath);
-
-                if (await file.exists()) {
-                  Process.start('cmd.exe', ['/c', 'start', '', configPath]);
-                } else {
-                  await configService.saveConfig(UserConfig());
-                  Process.start('cmd.exe', ['/c', 'start', '', configPath]);
-                }
-              } catch (e) {
-                debugPrint('Error opening config file: $e');
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSliderOption(String label, double value, double min, double max,
-      int divisions, Function(double) onChanged,
-      {String Function(double)? valueDisplayFormatter, String? subtitle}) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    return _buildOptionContainer(
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16)),
-          if (subtitle != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-              child: Text(
-                subtitle,
-                style: TextStyle(
-                    color: colorScheme.onSurface.withAlpha(153),
-                    fontSize: 14.0),
-                softWrap: true,
-                overflow: TextOverflow.visible,
-              ),
-            )
-          else
-            const SizedBox(height: 8.0),
-          Slider(
-            value: value,
-            min: min,
-            divisions: divisions,
-            label: valueDisplayFormatter != null
-                ? valueDisplayFormatter(value)
-                : value.toStringAsFixed(2),
-            max: max,
-            onChanged: (value) {
-              final Map<String, Function(double)> updates = {
-                'Key font size': (v) => _keyFontSize = v,
-                'Space font size': (v) => _spaceFontSize = v,
-                'Key size': (v) => _keySize = v,
-                'Key border radius': (v) => _keyBorderRadius = v,
-                'Key padding': (v) => _keyPadding = v,
-                'Space width': (v) => _spaceWidth = v,
-                'Split width': (v) => _splitWidth = v,
-                'Opacity': (v) => _opacity = v,
-                'Auto-hide duration (seconds)': (v) =>
-                    _autoHideDuration = (v * 2).round() / 2,
-                'Marker offset': (v) => _markerOffset = v,
-                'Marker width': (v) => _markerWidth = v,
-                'Marker height': (v) => _markerHeight = v,
-                'Marker border radius': (v) => _markerBorderRadius = v,
-                'Mouse width': (v) => _mouseWidth = v,
-                'Mouse height': (v) => _mouseHeight = v,
-                'Mouse border radius': (v) => _mouseBorderRadius = v,
-                'Gap between mouse and keyboard': (v) => _mouseGap = v,
-              };
-              setState(() {
-                updates[label]?.call(value);
-              });
-            },
-            onChangeEnd: onChanged,
-            // ignore: deprecated_member_use
-            year2023: false,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildColorOption(
-      String label, Color currentColor, Function(Color) onColorChanged) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-
-    return _buildOptionContainer(
-      Builder(builder: (context) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    color: colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16)),
-            ColorIndicator(
-              width: 44,
-              height: 44,
-              borderRadius: 11,
-              color: currentColor,
-              onSelectFocus: false,
-              onSelect: () async {
-                final Color? newColor = await showDialog<Color>(
-                  context: context,
-                  builder: (BuildContext context) {
-                    Color pickerColor = currentColor;
-                    return AlertDialog(
-                      backgroundColor: colorScheme.surface,
-                      content: SingleChildScrollView(
-                        child: ColorPicker(
-                          wheelDiameter: 250,
-                          wheelWidth: 22,
-                          wheelSquarePadding: 4,
-                          wheelSquareBorderRadius: 16,
-                          wheelHasBorder: true,
-                          color: pickerColor,
-                          onColorChanged: (Color color) {
-                            pickerColor = color;
-                          },
-                          heading: Text(
-                            'Select color',
-                            style: TextStyle(
-                              color: colorScheme.onSurface,
-                            ),
-                          ),
-                          showColorName: true,
-                          showColorCode: true,
-                          copyPasteBehavior: const ColorPickerCopyPasteBehavior(
-                            copyButton: true,
-                            pasteButton: true,
-                            ctrlC: true,
-                            ctrlV: true,
-                          ),
-                          colorNameTextStyle:
-                              TextStyle(color: colorScheme.onSurface),
-                          colorCodeTextStyle:
-                              TextStyle(color: colorScheme.onSurface),
-                          pickersEnabled: const <ColorPickerType, bool>{
-                            ColorPickerType.primary: false,
-                            ColorPickerType.accent: false,
-                            ColorPickerType.wheel: true,
-                          },
-                        ),
-                      ),
-                      actions: <Widget>[
-                        TextButton(
-                          child: Text('Cancel',
-                              style: TextStyle(color: colorScheme.primary)),
-                          onPressed: () {
-                            onColorChanged(currentColor);
-                            Navigator.of(context).pop();
-                          },
-                        ),
-                        TextButton(
-                          child: Text('OK',
-                              style: TextStyle(color: colorScheme.primary)),
-                          onPressed: () {
-                            Navigator.of(context).pop(pickerColor);
-                          },
-                        ),
-                      ],
-                    );
-                  },
-                );
-                if (newColor != null) {
-                  onColorChanged(newColor);
-                }
-              },
-            ),
-          ],
+          },
+          updateLastRowSplitWidth: (value) {
+            setState(() => _lastRowSplitWidth = value);
+            _updateMainWindow('updateLastRowSplitWidth', value);
+          },
+          updateKeyBorderThickness: (value) {
+            setState(() => _keyBorderThickness = value);
+            _updateMainWindow('updateKeyBorderThickness', value);
+          },
         );
-      }),
-    );
-  }
-
-  Widget _buildOptionContainer(Widget child) {
-    final colorScheme = ThemeManager.getTheme(_brightness).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: child,
-    );
+      case 'Text':
+        return TextTab(
+          fontFamily: _fontFamily,
+          fontWeight: _fontWeight,
+          keyFontSize: _keyFontSize,
+          spaceFontSize: _spaceFontSize,
+          updateFontFamily: (value) {
+            setState(() => _fontFamily = value);
+            _updateMainWindow('updateFontFamily', value);
+          },
+          updateFontWeight: (value) {
+            setState(() => _fontWeight = value);
+            _updateMainWindow('updateFontWeight', value);
+          },
+          updateKeyFontSize: (value) {
+            setState(() => _keyFontSize = value);
+            _updateMainWindow('updateKeyFontSize', value);
+          },
+          updateSpaceFontSize: (value) {
+            setState(() => _spaceFontSize = value);
+            _updateMainWindow('updateSpaceFontSize', value);
+          },
+        );
+      case 'Markers':
+        return MarkersTab(
+          markerOffset: _markerOffset,
+          markerWidth: _markerWidth,
+          markerHeight: _markerHeight,
+          markerBorderRadius: _markerBorderRadius,
+          showAltLayout: _showAltLayout,
+          updateMarkerOffset: (value) {
+            setState(() => _markerOffset = value);
+            _updateMainWindow('updateMarkerOffset', value);
+          },
+          updateMarkerWidth: (value) {
+            setState(() => _markerWidth = value);
+            _updateMainWindow('updateMarkerWidth', value);
+          },
+          updateMarkerHeight: (value) {
+            setState(() => _markerHeight = value);
+            _updateMainWindow('updateMarkerHeight', value);
+          },
+          updateMarkerBorderRadius: (value) {
+            setState(() => _markerBorderRadius = value);
+            _updateMainWindow('updateMarkerBorderRadius', value);
+          },
+        );
+      case 'Colors':
+        return ColorsTab(
+          keyColorPressed: _keyColorPressed,
+          keyColorNotPressed: _keyColorNotPressed,
+          markerColor: _markerColor,
+          markerColorNotPressed: _markerColorNotPressed,
+          keyTextColor: _keyTextColor,
+          keyTextColorNotPressed: _keyTextColorNotPressed,
+          keyBorderColorPressed: _keyBorderColorPressed,
+          keyBorderColorNotPressed: _keyBorderColorNotPressed,
+          updateKeyColorPressed: (value) {
+            setState(() => _keyColorPressed = value);
+            _updateMainWindow('updateKeyColorPressed', value);
+          },
+          updateKeyColorNotPressed: (value) {
+            setState(() => _keyColorNotPressed = value);
+            _updateMainWindow('updateKeyColorNotPressed', value);
+          },
+          updateMarkerColor: (value) {
+            setState(() => _markerColor = value);
+            _updateMainWindow('updateMarkerColor', value);
+          },
+          updateMarkerColorNotPressed: (value) {
+            setState(() => _markerColorNotPressed = value);
+            _updateMainWindow('updateMarkerColorNotPressed', value);
+          },
+          updateKeyTextColor: (value) {
+            setState(() => _keyTextColor = value);
+            _updateMainWindow('updateKeyTextColor', value);
+          },
+          updateKeyTextColorNotPressed: (value) {
+            setState(() => _keyTextColorNotPressed = value);
+            _updateMainWindow('updateKeyTextColorNotPressed', value);
+          },
+          updateKeyBorderColorPressed: (value) {
+            setState(() => _keyBorderColorPressed = value);
+            _updateMainWindow('updateKeyBorderColorPressed', value);
+          },
+          updateKeyBorderColorNotPressed: (value) {
+            setState(() => _keyBorderColorNotPressed = value);
+            _updateMainWindow('updateKeyBorderColorNotPressed', value);
+          },
+        );
+      case 'Animations':
+        return AnimationsTab(
+          animationEnabled: _animationEnabled,
+          animationStyle: _animationStyle,
+          animationDuration: _animationDuration,
+          animationScale: _animationScale,
+          updateAnimationEnabled: (value) {
+            setState(() => _animationEnabled = value);
+            _updateMainWindow('updateAnimationEnabled', value);
+          },
+          updateAnimationStyle: (value) {
+            setState(() => _animationStyle = value);
+            _updateMainWindow('updateAnimationStyle', value);
+          },
+          updateAnimationDuration: (value) {
+            setState(() => _animationDuration = value);
+            _updateMainWindow('updateAnimationDuration', value);
+          },
+          updateAnimationScale: (value) {
+            setState(() => _animationScale = value);
+            _updateMainWindow('updateAnimationScale', value);
+          },
+        );
+      case 'Hotkeys':
+        return HotKeysTab(
+          hotKeysEnabled: _hotKeysEnabled,
+          visibilityHotKey: _visibilityHotKey,
+          autoHideHotKey: _autoHideHotKey,
+          toggleMoveHotKey: _toggleMoveHotKey,
+          preferencesHotKey: _preferencesHotKey,
+          updateHotKeysEnabled: (value) {
+            setState(() => _hotKeysEnabled = value);
+            _updateMainWindow('updateHotKeysEnabled', value);
+          },
+          updateVisibilityHotKey: (value) {
+            setState(() => _visibilityHotKey = value);
+            _updateMainWindow('updateVisibilityHotKey', value);
+          },
+          updateAutoHideHotKey: (value) {
+            setState(() => _autoHideHotKey = value);
+            _updateMainWindow('updateAutoHideHotKey', value);
+          },
+          updateToggleMoveHotKey: (value) {
+            setState(() => _toggleMoveHotKey = value);
+            _updateMainWindow('updateToggleMoveHotKey', value);
+          },
+          updatePreferencesHotKey: (value) {
+            setState(() => _preferencesHotKey = value);
+            _updateMainWindow('updatePreferencesHotKey', value);
+          },
+        );
+      case 'Learn':
+        return LearnTab(
+          learningModeEnabled: _learningModeEnabled,
+          pinkyLeftColor: _pinkyLeftColor,
+          ringLeftColor: _ringLeftColor,
+          middleLeftColor: _middleLeftColor,
+          indexLeftColor: _indexLeftColor,
+          indexRightColor: _indexRightColor,
+          middleRightColor: _middleRightColor,
+          ringRightColor: _ringRightColor,
+          pinkyRightColor: _pinkyRightColor,
+          updateLearningModeEnabled: (value) {
+            setState(() => _learningModeEnabled = value);
+            _updateMainWindow('updateLearningModeEnabled', value);
+          },
+          updatePinkyLeftColor: (value) {
+            setState(() => _pinkyLeftColor = value);
+            _updateMainWindow('updatePinkyLeftColor', value);
+          },
+          updateRingLeftColor: (value) {
+            setState(() => _ringLeftColor = value);
+            _updateMainWindow('updateRingLeftColor', value);
+          },
+          updateMiddleLeftColor: (value) {
+            setState(() => _middleLeftColor = value);
+            _updateMainWindow('updateMiddleLeftColor', value);
+          },
+          updateIndexLeftColor: (value) {
+            setState(() => _indexLeftColor = value);
+            _updateMainWindow('updateIndexLeftColor', value);
+          },
+          updateIndexRightColor: (value) {
+            setState(() => _indexRightColor = value);
+            _updateMainWindow('updateIndexRightColor', value);
+          },
+          updateMiddleRightColor: (value) {
+            setState(() => _middleRightColor = value);
+            _updateMainWindow('updateMiddleRightColor', value);
+          },
+          updateRingRightColor: (value) {
+            setState(() => _ringRightColor = value);
+            _updateMainWindow('updateRingRightColor', value);
+          },
+          updatePinkyRightColor: (value) {
+            setState(() => _pinkyRightColor = value);
+            _updateMainWindow('updatePinkyRightColor', value);
+          },
+        );
+      case 'Advanced':
+        return AdvancedTab(
+          advancedSettingsEnabled: _advancedSettingsEnabled,
+          useUserLayout: _useUserLayout,
+          showAltLayout: _showAltLayout,
+          customFontEnabled: _customFontEnabled,
+          use6ColLayout: _use6ColLayout,
+          kanataEnabled: _kanataEnabled,
+          keyboardFollowsMouse: _keyboardFollowsMouse,
+          updateAdvancedSettingsEnabled: (value) {
+            setState(() => _advancedSettingsEnabled = value);
+            _updateMainWindow('updateAdvancedSettingsEnabled', value);
+          },
+          updateUseUserLayout: (value) {
+            setState(() => _useUserLayout = value);
+            if (value && _kanataEnabled) {
+              setState(() => _kanataEnabled = false);
+              _updateMainWindow('updateKanataEnabled', false);
+            }
+            _updateMainWindow('updateUseUserLayout', value);
+          },
+          updateShowAltLayout: (value) {
+            setState(() => _showAltLayout = value);
+            _updateMainWindow('updateShowAltLayout', value);
+          },
+          updateCustomFontEnabled: (value) {
+            setState(() => _customFontEnabled = value);
+            _updateMainWindow('updateCustomFontEnabled', value);
+          },
+          updateUse6ColLayout: (value) {
+            setState(() => _use6ColLayout = value);
+            _updateMainWindow('updateUse6ColLayout', value);
+          },
+          updateKanataEnabled: (value) {
+            setState(() => _kanataEnabled = value);
+            if (value && _useUserLayout) {
+              setState(() => _useUserLayout = false);
+              _updateMainWindow('updateUseUserLayout', false);
+            }
+            _updateMainWindow('updateKanataEnabled', value);
+          },
+          updateKeyboardFollowsMouse: (value) {
+            setState(() => _keyboardFollowsMouse = value);
+            _updateMainWindow('updateKeyboardFollowsMouse', value);
+          },
+        );
+      case 'About':
+        return AboutTab(appVersion: _appVersion);
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

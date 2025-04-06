@@ -4,17 +4,20 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:overkeys/services/config_service.dart';
 import 'package:overkeys/services/kanata_service.dart';
+import 'package:overkeys/services/preferences_service.dart';
 import 'package:overkeys/utils/key_code.dart';
+import 'package:overkeys/widgets/status_overlay.dart';
 import 'models/keyboard_layouts.dart';
 import 'screens/keyboard_screen.dart';
-import 'screens/mouse_screen.dart';
 import 'utils/hooks.dart';
 
 class MainApp extends StatefulWidget {
@@ -24,57 +27,32 @@ class MainApp extends StatefulWidget {
   State<MainApp> createState() => _MainAppState();
 }
 
-class _MainAppState extends State<MainApp> with TrayListener {
+class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   static const double _defaultWindowWidth = 1000;
   static const double _defaultWindowHeight = 330;
   static const double _defaultTopRowExtraHeight = 80;
   static const double _defaultTopRowExtraWidth = 160;
   static const Duration _fadeDuration = Duration(milliseconds: 200);
-  static const Duration _hideDelay = Duration(milliseconds: 300);
+  static const Duration _overlayDuration = Duration(milliseconds: 1000);
 
-  // Services
-  final SharedPreferencesAsync asyncPrefs = SharedPreferencesAsync();
-  final KanataService _kanataService = KanataService();
-  final Map<String, bool> _keyPressStates = {};
-  final Map<int, bool> _mouseButtonStates = {};
-
-  // Window state
+  // UI state
   bool _isWindowVisible = true;
   bool _ignoreMouseEvents = true;
   Timer? _autoHideTimer;
+  bool _forceHide = false;
+  bool autoHideBeforeForceHide = false;
   bool autoHideBeforeMove = false;
+  Brightness _brightness = Brightness.dark;
 
   // General settings
   // ignore: unused_field
   bool _launchAtStartup = false;
   bool _autoHideEnabled = false;
   double _autoHideDuration = 2.0;
-  KeyboardLayout _keyboardLayout = qwerty;
-  KeyboardLayout? _initialKeyboardLayout;
-  bool _useUserLayout = false;
-  KeyboardLayout? _altLayout;
-  bool _showAltLayout = false;
-  bool _kanataEnabled = false;
-
-  // Appearance settings
   double _opacity = 0.6;
   double _lastOpacity = 0.6;
-  Color _keyColorPressed = const Color.fromARGB(255, 30, 30, 30);
-  Color _keyColorNotPressed = const Color.fromARGB(255, 119, 171, 255);
-  Color _markerColor = Colors.white;
-  Color _markerColorNotPressed = Colors.black;
-  double _markerOffset = 10;
-  double _markerWidth = 10;
-  double _markerHeight = 2;
-  double _markerBorderRadius = 10;
-
-  // Mouse settings
-  bool _enableMouse = false;
-  double _mouseWidth = 130;
-  double _mouseHeight = 200;
-  double _mouseBorderRadius = 20;
-  String _mouseLayoutName = 'Simple Mouse';
-  double _mouseGap = 40;
+  KeyboardLayout _keyboardLayout = qwerty;
+  KeyboardLayout? _initialKeyboardLayout;
 
   // Keyboard settings
   String _keymapStyle = 'Staggered';
@@ -85,14 +63,90 @@ class _MainAppState extends State<MainApp> with TrayListener {
   double _keyPadding = 3;
   double _spaceWidth = 320;
   double _splitWidth = 100;
+  double _lastRowSplitWidth = 100;
+  double _keyBorderThickness = 0;
 
   // Text settings
   String _fontFamily = 'GeistMono';
+  String _initialFontFamily = 'GeistMono';
+  FontWeight _fontWeight = FontWeight.w600;
   double _keyFontSize = 20;
   double _spaceFontSize = 14;
-  FontWeight _fontWeight = FontWeight.w600;
+
+  // Markers settings
+  double _markerOffset = 10;
+  double _markerWidth = 10;
+  double _markerHeight = 2;
+  double _markerBorderRadius = 10;
+
+  // Colors settings
+  Color _keyColorPressed = const Color.fromARGB(255, 30, 30, 30);
+  Color _keyColorNotPressed = const Color.fromARGB(255, 119, 171, 255);
+  Color _markerColor = Colors.white;
+  Color _markerColorNotPressed = Colors.black;
   Color _keyTextColor = Colors.white;
   Color _keyTextColorNotPressed = Colors.black;
+  Color _keyBorderColorPressed = Colors.black;
+  Color _keyBorderColorNotPressed = Colors.white;
+
+  // Animations settings
+  bool _animationEnabled = false;
+  String _animationStyle = 'Raise';
+  double _animationDuration = 100;
+  double _animationScale = 2.0;
+
+  // HotKey settings
+  bool _hotKeysEnabled = true;
+  HotKey _visibilityHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyQ,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _autoHideHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyW,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _toggleMoveHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyE,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+  HotKey _preferencesHotKey = HotKey(
+    key: PhysicalKeyboardKey.keyR,
+    modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
+  );
+
+  // Learn settings
+  bool _learningModeEnabled = false;
+  Color _pinkyLeftColor = const Color(0xFFED3345);
+  Color _ringLeftColor = const Color(0xFFFAA71D);
+  Color _middleLeftColor = const Color(0xFF70C27B);
+  Color _indexLeftColor = const Color(0xFF00AFEB);
+  Color _indexRightColor = const Color(0xFF5985BF);
+  Color _middleRightColor = const Color(0xFF97D6F5);
+  Color _ringRightColor = const Color(0xFFFFE8A0);
+  Color _pinkyRightColor = const Color(0xFFBDE0BF);
+
+  // Advanced settings
+  bool _advancedSettingsEnabled = false;
+  bool _useUserLayout = false;
+  bool _showAltLayout = false;
+  bool _initialShowAltLayout = false;
+  KeyboardLayout _altLayout = qwerty;
+  bool _customFontEnabled = false;
+  bool _use6ColLayout = false;
+  bool _kanataEnabled = false;
+  bool _keyboardFollowsMouse = false;
+  Timer? _mouseCheckTimer;
+
+  // Services
+  final PreferencesService _prefsService = PreferencesService();
+  final KanataService _kanataService = KanataService();
+  final Map<String, bool> _keyPressStates = {};
+
+  // Overlay
+  bool _showStatusOverlay = false;
+  String _overlayMessage = '';
+  Icon _statusIcon = const Icon(LucideIcons.eye);
+  Timer? _overlayTimer;
 
   @override
   void initState() {
@@ -101,30 +155,227 @@ class _MainAppState extends State<MainApp> with TrayListener {
   }
 
   Future<void> _initialize() async {
-    await _loadPreferences();
+    await _loadAllPreferences();
     trayManager.addListener(this);
+    windowManager.addListener(this);
     _setupTray();
     _setupKeyListener();
+    _setupHotKeys();
     _setupMethodHandler();
-    _initStartupSetting();
-    await _loadKanataConfig();
+    _initStartup();
     _setupKanataLayerChangeHandler();
-
-    // Delayed initialization tasks
-    Future.delayed(const Duration(seconds: 2), () {
+    if (_advancedSettingsEnabled) {
       if (_useUserLayout) {
         _loadUserLayout();
       }
       if (_showAltLayout) {
         _loadAltLayout();
       }
+      if (_customFontEnabled) {
+        _loadCustomFont();
+      }
       if (_kanataEnabled) {
-        _kanataService.connect();
+        _useKanata();
       }
-      if (_showTopRow) {
-        _adjustWindowSize();
+      if (_keyboardFollowsMouse) {
+        _startMouseTracking();
       }
+    }
+    if (_showTopRow) {
+      _adjustWindowSize();
+    }
+    if (_autoHideEnabled) {
+      _resetAutoHideTimer();
+    }
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    trayManager.removeListener(this);
+    unhook();
+    _autoHideTimer?.cancel();
+    _overlayTimer?.cancel();
+    _mouseCheckTimer?.cancel();
+    _kanataService.dispose();
+    _saveAllPreferences();
+    super.dispose();
+  }
+
+  void _startMouseTracking() {
+    _mouseCheckTimer?.cancel();
+    if (_keyboardFollowsMouse && _advancedSettingsEnabled) {
+      _mouseCheckTimer = Timer.periodic(const Duration(milliseconds: 500),
+          (_) => windowManager.setAlignment(Alignment.bottomCenter));
+    }
+  }
+
+  void _stopMouseTracking() {
+    _mouseCheckTimer?.cancel();
+  }
+
+  Future<void> _loadAllPreferences() async {
+    final prefs = await _prefsService.loadAllPreferences();
+
+    setState(() {
+      // General settings
+      _launchAtStartup = prefs['launchAtStartup'];
+      _autoHideEnabled = prefs['autoHideEnabled'];
+      _autoHideDuration = prefs['autoHideDuration'];
+      _opacity = prefs['opacity'];
+      _lastOpacity = prefs['opacity'];
+      _keyboardLayout = availableLayouts
+          .firstWhere((layout) => layout.name == prefs['keyboardLayoutName']);
+      _initialKeyboardLayout = _keyboardLayout;
+
+      // Keyboard settings
+      _keymapStyle = prefs['keymapStyle'];
+      _showTopRow = prefs['showTopRow'];
+      _showGraveKey = prefs['showGraveKey'];
+      _keySize = prefs['keySize'];
+      _keyBorderRadius = prefs['keyBorderRadius'];
+      _keyPadding = prefs['keyPadding'];
+      _spaceWidth = prefs['spaceWidth'];
+      _splitWidth = prefs['splitWidth'];
+      _lastRowSplitWidth = prefs['lastRowSplitWidth'];
+      _keyBorderThickness = prefs['keyBorderThickness'];
+
+      // Text settings
+      _fontFamily = prefs['fontFamily'];
+      _fontWeight = prefs['fontWeight'];
+      _keyFontSize = prefs['keyFontSize'];
+      _spaceFontSize = prefs['spaceFontSize'];
+
+      // Markers settings
+      _markerOffset = prefs['markerOffset'];
+      _markerWidth = prefs['markerWidth'];
+      _markerHeight = prefs['markerHeight'];
+      _markerBorderRadius = prefs['markerBorderRadius'];
+
+      // Colors settings
+      _keyColorPressed = prefs['keyColorPressed'];
+      _keyColorNotPressed = prefs['keyColorNotPressed'];
+      _markerColor = prefs['markerColor'];
+      _markerColorNotPressed = prefs['markerColorNotPressed'];
+      _keyTextColor = prefs['keyTextColor'];
+      _keyTextColorNotPressed = prefs['keyTextColorNotPressed'];
+      _keyBorderColorPressed = prefs['keyBorderColorPressed'];
+      _keyBorderColorNotPressed = prefs['keyBorderColorNotPressed'];
+
+      // Animations settings
+      _animationEnabled = prefs['animationEnabled'];
+      _animationStyle = prefs['animationStyle'];
+      _animationDuration = prefs['animationDuration'];
+      _animationScale = prefs['animationScale'];
+
+      // HotKey settings
+      _hotKeysEnabled = prefs['hotKeysEnabled'];
+      _visibilityHotKey = prefs['visibilityHotKey'];
+      _autoHideHotKey = prefs['autoHideHotKey'];
+      _toggleMoveHotKey = prefs['toggleMoveHotKey'];
+      _preferencesHotKey = prefs['preferencesHotKey'];
+
+      // Learn settings
+      _learningModeEnabled = prefs['learningModeEnabled'];
+      _pinkyLeftColor = prefs['pinkyLeftColor'];
+      _ringLeftColor = prefs['ringLeftColor'];
+      _middleLeftColor = prefs['middleLeftColor'];
+      _indexLeftColor = prefs['indexLeftColor'];
+      _indexRightColor = prefs['indexRightColor'];
+      _middleRightColor = prefs['middleRightColor'];
+      _ringRightColor = prefs['ringRightColor'];
+      _pinkyRightColor = prefs['pinkyRightColor'];
+
+      // Advanced settings
+      _advancedSettingsEnabled = prefs['advancedSettingsEnabled'];
+      _useUserLayout = prefs['useUserLayout'];
+      _showAltLayout = prefs['showAltLayout'];
+      _altLayout = _keyboardLayout;
+      _customFontEnabled = prefs['customFontEnabled'];
+      _use6ColLayout = prefs['use6ColLayout'];
+      _kanataEnabled = prefs['kanataEnabled'];
+      _keyboardFollowsMouse = prefs['keyboardFollowsMouse'];
     });
+  }
+
+  Future<void> _saveAllPreferences() async {
+    final prefs = {
+      // General settings
+      'launchAtStartup': _launchAtStartup,
+      'autoHideEnabled': _autoHideEnabled,
+      'autoHideDuration': _autoHideDuration,
+      'opacity': _opacity,
+      'keyboardLayoutName': _initialKeyboardLayout!.name,
+
+      // Keyboard settings
+      'keymapStyle': _keymapStyle,
+      'showTopRow': _showTopRow,
+      'showGraveKey': _showGraveKey,
+      'keySize': _keySize,
+      'keyBorderRadius': _keyBorderRadius,
+      'keyPadding': _keyPadding,
+      'spaceWidth': _spaceWidth,
+      'splitWidth': _splitWidth,
+      'lastRowSplitWidth': _lastRowSplitWidth,
+      'keyBorderThickness': _keyBorderThickness,
+
+      // Text settings
+      'fontFamily': _fontFamily,
+      'fontWeight': _fontWeight,
+      'keyFontSize': _keyFontSize,
+      'spaceFontSize': _spaceFontSize,
+
+      // Markers settings
+      'markerOffset': _markerOffset,
+      'markerWidth': _markerWidth,
+      'markerHeight': _markerHeight,
+      'markerBorderRadius': _markerBorderRadius,
+
+      // Colors settings
+      'keyColorPressed': _keyColorPressed,
+      'keyColorNotPressed': _keyColorNotPressed,
+      'markerColor': _markerColor,
+      'markerColorNotPressed': _markerColorNotPressed,
+      'keyTextColor': _keyTextColor,
+      'keyTextColorNotPressed': _keyTextColorNotPressed,
+      'keyBorderColorPressed': _keyBorderColorPressed,
+      'keyBorderColorNotPressed': _keyBorderColorNotPressed,
+
+      // Animations settings
+      'animationEnabled': _animationEnabled,
+      'animationStyle': _animationStyle,
+      'animationDuration': _animationDuration,
+      'animationScale': _animationScale,
+
+      // HotKey settings
+      'hotKeysEnabled': _hotKeysEnabled,
+      'visibilityHotKey': _visibilityHotKey,
+      'autoHideHotKey': _autoHideHotKey,
+      'toggleMoveHotKey': _toggleMoveHotKey,
+      'preferencesHotKey': _preferencesHotKey,
+
+      // Learn settings
+      'learningModeEnabled': _learningModeEnabled,
+      'pinkyLeftColor': _pinkyLeftColor,
+      'ringLeftColor': _ringLeftColor,
+      'middleLeftColor': _middleLeftColor,
+      'indexLeftColor': _indexLeftColor,
+      'indexRightColor': _indexRightColor,
+      'middleRightColor': _middleRightColor,
+      'ringRightColor': _ringRightColor,
+      'pinkyRightColor': _pinkyRightColor,
+
+      // Advanced settings
+      'advancedSettingsEnabled': _advancedSettingsEnabled,
+      'useUserLayout': _useUserLayout,
+      'showAltLayout': _showAltLayout,
+      'customFontEnabled': _customFontEnabled,
+      'use6ColLayout': _use6ColLayout,
+      'kanataEnabled': _kanataEnabled,
+      'keyboardFollowsMouse': _keyboardFollowsMouse,
+    };
+
+    await _prefsService.saveAllPreferences(prefs);
   }
 
   void _setupKanataLayerChangeHandler() {
@@ -139,36 +390,20 @@ class _MainAppState extends State<MainApp> with TrayListener {
 
   void _updateAutoHideBasedOnLayer(bool isDefaultUserLayout) {
     if (!isDefaultUserLayout && _autoHideEnabled) {
-      // Disable auto-hide for non-default layers
       _autoHideEnabled = false;
       _autoHideTimer?.cancel();
       autoHideBeforeMove = true;
     } else if (isDefaultUserLayout && autoHideBeforeMove) {
-      // Re-enable auto-hide when returning to default layer if it was enabled before
       _autoHideEnabled = true;
       _resetAutoHideTimer();
       autoHideBeforeMove = false;
     }
   }
 
-  Future<void> _initStartupSetting() async {
-    _launchAtStartup = await launchAtStartup.isEnabled();
-    setState(() {});
-  }
-
-  Future<void> _handleStartupToggle(bool enable) async {
-    if (enable) {
-      await launchAtStartup.enable();
-      if (kDebugMode) {
-        print('On system startup: Enabled');
-      }
-    } else {
-      await launchAtStartup.disable();
-      if (kDebugMode) {
-        print('On system startup: Disabled');
-      }
+  Future<void> _useKanata() async {
+    if (_kanataEnabled && _advancedSettingsEnabled) {
+      _kanataService.connect();
     }
-    await _initStartupSetting();
   }
 
   Future<void> _loadUserLayout() async {
@@ -182,9 +417,6 @@ class _MainAppState extends State<MainApp> with TrayListener {
         setState(() {
           _keyboardLayout = userLayout;
         });
-        if (kDebugMode) {
-          print('Loaded user layout: ${userLayout.name}');
-        }
         _fadeIn();
       }
     }
@@ -199,27 +431,35 @@ class _MainAppState extends State<MainApp> with TrayListener {
       setState(() {
         _altLayout = altLayout;
       });
-      if (kDebugMode) {
-        print('Loaded alt layout: ${altLayout.name}');
-      }
     }
   }
 
-  Future<void> _loadKanataConfig() async {
+  Future<void> _loadCustomFont() async {
+    if (!_customFontEnabled || !_advancedSettingsEnabled) return;
+
     final configService = ConfigService();
     final config = await configService.loadConfig();
 
-    if (_kanataEnabled) {
-      _kanataService.updateSettings(
-          config.kanataHost, config.kanataPort, config.userLayouts);
-
-      final defaultLayout = await configService.getUserLayout();
+    if (config.customFont.isNotEmpty) {
       setState(() {
-        if (defaultLayout != null) {
-          _keyboardLayout = defaultLayout;
-        }
+        _initialFontFamily = _fontFamily;
+        _fontFamily = config.customFont;
       });
     }
+  }
+
+  Future<void> _initStartup() async {
+    _launchAtStartup = await launchAtStartup.isEnabled();
+    setState(() {});
+  }
+
+  Future<void> _handleStartupToggle(bool enable) async {
+    if (enable) {
+      await launchAtStartup.enable();
+    } else {
+      await launchAtStartup.disable();
+    }
+    await _initStartup();
   }
 
   Future<void> _adjustWindowSize() async {
@@ -234,176 +474,323 @@ class _MainAppState extends State<MainApp> with TrayListener {
     await windowManager.setAlignment(Alignment.bottomCenter);
   }
 
-  @override
-  void dispose() {
-    trayManager.removeListener(this);
-    unhook();
-    _autoHideTimer?.cancel();
-    _kanataService.dispose();
-    _savePreferences();
-    super.dispose();
-  }
-
-  Future<void> _loadPreferences() async {
-    // General settings
-    bool autoHideEnabled = await asyncPrefs.getBool('autoHideEnabled') ?? false;
-    double autoHideDuration =
-        await asyncPrefs.getDouble('autoHideDuration') ?? 2.0;
-    String keyboardLayoutName =
-        await asyncPrefs.getString('layout') ?? 'QWERTY';
-    bool useUserLayout = await asyncPrefs.getBool('useUserLayout') ?? false;
-    bool showAltLayout = await asyncPrefs.getBool('showAltLayout') ?? false;
-    bool kanataEnabled = await asyncPrefs.getBool('kanataEnabled') ?? false;
-
-    // Mouse settings
-    bool enableMouse = await asyncPrefs.getBool('enableMouse') ?? false;
-    double mouseWidth = await asyncPrefs.getDouble('mouseWidth') ?? 130;
-    double mouseHeight = await asyncPrefs.getDouble('mouseHeight') ?? 200;
-    double mouseBorderRadius =
-        await asyncPrefs.getDouble('mouseBorderRadius') ?? 20;
-    String mouseLayoutName =
-        await asyncPrefs.getString('mouseLayoutName') ?? 'Simple Mouse';
-    double mouseGap = await asyncPrefs.getDouble('mouseGap') ?? 40;
-
-    // Appearance settings
-    double opacity = await asyncPrefs.getDouble('opacity') ?? 0.6;
-    Color keyColorPressed =
-        Color(await asyncPrefs.getInt('keyColorPressed') ?? 0xFF1E1E1E);
-    Color keyColorNotPressed =
-        Color(await asyncPrefs.getInt('keyColorNotPressed') ?? 0xFF77ABFF);
-    Color markerColor =
-        Color(await asyncPrefs.getInt('markerColor') ?? 0xFFFFFFFF);
-    Color markerColorNotPressed =
-        Color(await asyncPrefs.getInt('markerColorNotPressed') ?? 0xFF000000);
-    double markerOffset = await asyncPrefs.getDouble('markerOffset') ?? 10;
-    double markerWidth = await asyncPrefs.getDouble('markerWidth') ?? 10;
-    double markerHeight = await asyncPrefs.getDouble('markerHeight') ?? 2;
-    double markerBorderRadius =
-        await asyncPrefs.getDouble('markerBorderRadius') ?? 10;
-
-    // Keyboard settings
-    String keymapStyle =
-        await asyncPrefs.getString('keymapStyle') ?? 'Staggered';
-    bool showTopRow = await asyncPrefs.getBool('showTopRow') ?? false;
-    bool showGraveKey = await asyncPrefs.getBool('showGraveKey') ?? false;
-    double keySize = await asyncPrefs.getDouble('keySize') ?? 48;
-    double keyBorderRadius =
-        await asyncPrefs.getDouble('keyBorderRadius') ?? 12;
-    double keyPadding = await asyncPrefs.getDouble('keyPadding') ?? 3;
-    double spaceWidth = await asyncPrefs.getDouble('spaceWidth') ?? 320;
-    double splitWidth = await asyncPrefs.getDouble('splitWidth') ?? 100;
-
-    // Text settings
-    String fontFamily = await asyncPrefs.getString('fontFamily') ?? 'GeistMono';
-    double keyFontSize = await asyncPrefs.getDouble('keyFontSize') ?? 20;
-    double spaceFontSize = await asyncPrefs.getDouble('spaceFontSize') ?? 14;
-    FontWeight fontWeight = FontWeight
-        .values[await asyncPrefs.getInt('fontWeight') ?? FontWeight.w600.index];
-    Color keyTextColor =
-        Color(await asyncPrefs.getInt('keyTextColor') ?? 0xFFFFFFFF);
-    Color keyTextColorNotPressed =
-        Color(await asyncPrefs.getInt('keyTextColorNotPressed') ?? 0xFF000000);
-
+  void _fadeOut() {
+    if (!_isWindowVisible) return;
     setState(() {
-      // General settings
-      _autoHideEnabled = autoHideEnabled;
-      _autoHideDuration = autoHideDuration;
-      _keyboardLayout = availableLayouts
-          .firstWhere((layout) => layout.name == keyboardLayoutName);
-      _initialKeyboardLayout = _keyboardLayout;
-      _useUserLayout = useUserLayout;
-      _showAltLayout = showAltLayout;
-      _altLayout = _keyboardLayout;
-      _kanataEnabled = kanataEnabled;
-
-      // Mouse settings
-      _enableMouse = enableMouse;
-      _mouseWidth = mouseWidth;
-      _mouseHeight = mouseHeight;
-      _mouseBorderRadius = mouseBorderRadius;
-      _mouseLayoutName = mouseLayoutName;
-      _mouseGap = mouseGap;
-
-      // Appearance settings
-      _opacity = opacity;
-      _keyColorPressed = keyColorPressed;
-      _keyColorNotPressed = keyColorNotPressed;
-      _markerColor = markerColor;
-      _markerColorNotPressed = markerColorNotPressed;
-      _markerOffset = markerOffset;
-      _markerWidth = markerWidth;
-      _markerHeight = markerHeight;
-      _markerBorderRadius = markerBorderRadius;
-
-      // Keyboard settings
-      _keymapStyle = keymapStyle;
-      _showTopRow = showTopRow;
-      _showGraveKey = showGraveKey;
-      _keySize = keySize;
-      _keyBorderRadius = keyBorderRadius;
-      _keyPadding = keyPadding;
-      _spaceWidth = spaceWidth;
-      _splitWidth = splitWidth;
-
-      // Text settings
-      _fontFamily = fontFamily;
-      _keyFontSize = keyFontSize;
-      _spaceFontSize = spaceFontSize;
-      _fontWeight = fontWeight;
-      _keyTextColor = keyTextColor;
-      _keyTextColorNotPressed = keyTextColorNotPressed;
+      _lastOpacity = _opacity;
+      _opacity = 0.0;
+      _isWindowVisible = false;
     });
   }
 
-  Future<void> _savePreferences() async {
-    // General settings
-    await asyncPrefs.setBool('launchAtStartup', _launchAtStartup);
-    await asyncPrefs.setBool('autoHideEnabled', _autoHideEnabled);
-    await asyncPrefs.setDouble('autoHideDuration', _autoHideDuration);
-    await asyncPrefs.setString('layout', _initialKeyboardLayout!.name);
-    await asyncPrefs.setBool('useUserLayout', _useUserLayout);
-    await asyncPrefs.setBool('showAltLayout', _showAltLayout);
-    await asyncPrefs.setBool('kanataEnabled', _kanataEnabled);
+  void _fadeIn() {
+    if (_forceHide || _isWindowVisible) return;
+    setState(() {
+      _isWindowVisible = true;
+      _opacity = _lastOpacity;
+    });
+    _resetAutoHideTimer();
+  }
 
-    // Mouse settings
-    await asyncPrefs.setBool('enableMouse', _enableMouse);
-    await asyncPrefs.setDouble('mouseWidth', _mouseWidth);
-    await asyncPrefs.setDouble('mouseHeight', _mouseHeight);
-    await asyncPrefs.setDouble('mouseBorderRadius', _mouseBorderRadius);
-    await asyncPrefs.setString('mouseLayoutName', _mouseLayoutName);
-    await asyncPrefs.setDouble('mouseGap', _mouseGap);
+  void _setupKeyListener() {
+    final receivePort = ReceivePort();
+    Isolate.spawn(setHook, receivePort.sendPort)
+        .then((_) {})
+        .catchError((error) {
+      if (kDebugMode) {
+        print('Error spawning Isolate: $error');
+      }
+    });
 
-    // Appearance settings
-    await asyncPrefs.setDouble('opacity', _opacity);
-    await asyncPrefs.setInt('keyColorPressed', _keyColorPressed.toARGB32());
-    await asyncPrefs.setInt(
-        'keyColorNotPressed', _keyColorNotPressed.toARGB32());
-    await asyncPrefs.setInt('markerColor', _markerColor.toARGB32());
-    await asyncPrefs.setInt(
-        'markerColorNotPressed', _markerColorNotPressed.toARGB32());
-    await asyncPrefs.setDouble('markerOffset', _markerOffset);
-    await asyncPrefs.setDouble('markerWidth', _markerWidth);
-    await asyncPrefs.setDouble('markerHeight', _markerHeight);
-    await asyncPrefs.setDouble('markerBorderRadius', _markerBorderRadius);
+    receivePort.listen(_handleKeyEvent);
+  }
 
-    // Keyboard settings
-    await asyncPrefs.setString('keymapStyle', _keymapStyle);
-    await asyncPrefs.setBool('showTopRow', _showTopRow);
-    await asyncPrefs.setBool('showGraveKey', _showGraveKey);
-    await asyncPrefs.setDouble('keySize', _keySize);
-    await asyncPrefs.setDouble('keyBorderRadius', _keyBorderRadius);
-    await asyncPrefs.setDouble('keyPadding', _keyPadding);
-    await asyncPrefs.setDouble('spaceWidth', _spaceWidth);
-    await asyncPrefs.setDouble('splitWidth', _splitWidth);
+  void _handleKeyEvent(dynamic message) {
+    if (message is! List) return;
 
-    // Text settings
-    await asyncPrefs.setString('fontFamily', _fontFamily);
-    await asyncPrefs.setDouble('keyFontSize', _keyFontSize);
-    await asyncPrefs.setDouble('spaceFontSize', _spaceFontSize);
-    await asyncPrefs.setInt('fontWeight', _fontWeight.index);
-    await asyncPrefs.setInt('keyTextColor', _keyTextColor.toARGB32());
-    await asyncPrefs.setInt(
-        'keyTextColorNotPressed', _keyTextColorNotPressed.toARGB32());
+    if (message[0] is String) {
+      if (message[0] == 'session_unlock') {
+        setState(() => _keyPressStates.clear());
+      }
+      return;
+    }
+
+    if (message[0] is! int) return;
+
+    final keyCode = message[0] as int;
+    final isPressed = message[1] as bool;
+    final isShiftDown = message[2] as bool;
+    final key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
+
+    if (kDebugMode) {
+      print(
+          'Key: ${key.padRight(10)}\tKeyCode: ${keyCode.toString().padRight(5)}\tPressed: ${isPressed.toString().padRight(5)}\tShift: $isShiftDown');
+    }
+    setState(() {
+      _keyPressStates[key] = isPressed;
+    });
+    if (_forceHide) return;
+    if (_autoHideEnabled && !_isWindowVisible && isPressed) {
+      _fadeIn();
+    } else {
+      _resetAutoHideTimer();
+    }
+  }
+
+  void _resetAutoHideTimer() {
+    if (!_autoHideEnabled) return;
+
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(
+        Duration(milliseconds: (_autoHideDuration * 1000).round()),
+        _handleAutoHide);
+  }
+
+  void _handleAutoHide() {
+    if (_autoHideEnabled && _isWindowVisible) {
+      _fadeOut();
+    }
+  }
+
+  void _toggleAutoHide(bool enable) {
+    setState(() {
+      _autoHideEnabled = enable;
+      if (_autoHideEnabled) {
+        _resetAutoHideTimer();
+      } else {
+        _autoHideTimer?.cancel();
+        if (!_isWindowVisible) {
+          _fadeIn();
+        }
+      }
+    });
+    _showOverlay(
+        _autoHideEnabled ? 'Auto-hide Enabled' : 'Auto-hide Disabled',
+        _autoHideEnabled
+            ? const Icon(LucideIcons.timerReset)
+            : const Icon(LucideIcons.timerOff));
+    DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
+      for (final id in windowIds) {
+        DesktopMultiWindow.invokeMethod(
+            id, 'updateAutoHideFromMainWindow', _autoHideEnabled);
+      }
+    });
+    _saveAllPreferences();
+    _setupTray();
+  }
+
+  void _showOverlay(String message, Icon icon) {
+    setState(() {
+      _overlayMessage = message;
+      _statusIcon = icon;
+      _showStatusOverlay = true;
+    });
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(_overlayDuration, () {
+      setState(() => _showStatusOverlay = false);
+    });
+  }
+
+  Future<void> _setupTray() async {
+    final String iconPath = Platform.isWindows
+        ? 'assets/images/app_icon.ico'
+        : 'assets/images/app_icon.png';
+    await Future.wait([
+      trayManager.setIcon(iconPath),
+      trayManager.setToolTip('OverKeys'),
+    ]);
+    trayManager.setContextMenu(Menu(items: [
+      MenuItem.checkbox(
+        key: 'toggle_mouse_events',
+        label: 'Move',
+        checked: !_ignoreMouseEvents,
+        onClick: (menuItem) {
+          setState(() {
+            _ignoreMouseEvents = !_ignoreMouseEvents;
+            windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
+            if (_ignoreMouseEvents) {
+              _fadeIn();
+              _showOverlay('Move disabled', const Icon(LucideIcons.lock));
+            } else {
+              _showOverlay('Move enabled', const Icon(LucideIcons.move));
+            }
+          });
+        },
+      ),
+      MenuItem.separator(),
+      MenuItem.checkbox(
+        key: 'toggle_auto_hide',
+        label: 'Auto Hide',
+        checked: _autoHideEnabled,
+        onClick: (menuItem) {
+          _toggleAutoHide(!_autoHideEnabled);
+        },
+      ),
+      MenuItem.separator(),
+      MenuItem(
+          key: 'reset_position',
+          label: 'Reset Position',
+          onClick: (menuItem) {
+            windowManager.setAlignment(Alignment.bottomCenter);
+            _showOverlay('Position reset', const Icon(LucideIcons.locateFixed));
+          }),
+      MenuItem.separator(),
+      MenuItem(
+        key: 'preferences',
+        label: 'Preferences',
+        onClick: (menuItem) {
+          _showPreferences();
+        },
+      ),
+      MenuItem.separator(),
+      MenuItem(
+        key: 'exit',
+        label: 'Exit',
+      ),
+    ]));
+  }
+
+  Future<void> _setupHotKeys() async {
+    await hotKeyManager.unregisterAll();
+
+    if (!_hotKeysEnabled) return;
+
+    await hotKeyManager.register(
+      _autoHideHotKey,
+      keyDownHandler: (hotKey) {
+        if (kDebugMode) {
+          print(
+              'Auto-hide hotkey triggered: ${hotKey.toJson()} - toggling to ${!_autoHideEnabled}');
+        }
+        _toggleAutoHide(!_autoHideEnabled);
+      },
+    );
+
+    await hotKeyManager.register(
+      _visibilityHotKey,
+      keyDownHandler: (hotKey) {
+        if (kDebugMode) {
+          print(
+              'Visibility hotkey triggered: ${hotKey.toJson()} - toggling force hide to ${!_forceHide}');
+        }
+        setState(() {
+          onTrayIconMouseDown();
+        });
+      },
+    );
+
+    await hotKeyManager.register(
+      _toggleMoveHotKey,
+      keyDownHandler: (hotKey) {
+        if (kDebugMode) {
+          print('Toggle move hotkey triggered: ${hotKey.toJson()}');
+        }
+        setState(() {
+          _ignoreMouseEvents = !_ignoreMouseEvents;
+          windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
+          if (_ignoreMouseEvents) {
+            _fadeIn();
+            _showOverlay('Move disabled', const Icon(LucideIcons.lock));
+          } else {
+            _showOverlay('Move enabled', const Icon(LucideIcons.move));
+          }
+        });
+      },
+    );
+
+    await hotKeyManager.register(
+      _preferencesHotKey,
+      keyDownHandler: (hotKey) {
+        if (kDebugMode) {
+          print('Preferences hotkey triggered: ${hotKey.toJson()}');
+        }
+        _showOverlay('Opening Preferences', const Icon(LucideIcons.appWindow));
+        _showPreferences();
+      },
+    );
+  }
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) {
+    if (menuItem.key == 'exit') {
+      DesktopMultiWindow.getAllSubWindowIds().then((windowIds) async {
+        for (final id in windowIds) {
+          await WindowController.fromWindowId(id).close();
+        }
+        await windowManager.close();
+        exit(0);
+      }).catchError((error) {
+        if (kDebugMode) {
+          print('Error closing windows: $error');
+        }
+        windowManager.close();
+        exit(0);
+      });
+      return;
+    }
+    _setupTray();
+  }
+
+  @override
+  void onTrayIconMouseDown() {
+    _forceHide = !_forceHide;
+    _showOverlay(
+        _forceHide ? 'Keyboard Hidden' : 'Keyboard Shown',
+        _forceHide
+            ? const Icon(LucideIcons.eyeOff)
+            : const Icon(LucideIcons.eye));
+    if (_isWindowVisible) {
+      _fadeOut();
+    } else {
+      _fadeIn();
+    }
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    trayManager.popUpContextMenu(
+      // ignore: deprecated_member_use
+      bringAppToFront: true,
+    );
+  }
+
+  @override
+  void onWindowFocus() {
+    windowManager.blur();
+  }
+
+  Future<void> _showPreferences() async {
+    try {
+      List<int> windowIds = await DesktopMultiWindow.getAllSubWindowIds();
+      for (int id in windowIds) {
+        Map<String, dynamic>? windowData;
+        try {
+          String? dataString =
+              await DesktopMultiWindow.invokeMethod(id, 'getWindowType');
+          if (dataString != null) {
+            windowData = jsonDecode(dataString);
+            if (windowData != null && windowData['type'] == 'preferences') {
+              await WindowController.fromWindowId(id).show();
+              await DesktopMultiWindow.invokeMethod(id, 'requestFocus');
+              return;
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error getting window data: $e');
+          }
+        }
+      }
+
+      await DesktopMultiWindow.createWindow(jsonEncode({
+        'type': 'preferences',
+        'name': 'preferences',
+      }));
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error handling preferences window: $e');
+      }
+    }
   }
 
   void _setupMethodHandler() {
@@ -411,32 +798,28 @@ class _MainAppState extends State<MainApp> with TrayListener {
       switch (call.method) {
         // General settings
         case 'updateLaunchAtStartup':
-          final launchAtStartupRet = call.arguments as bool;
+          final launchAtStartupValue = call.arguments as bool;
           setState(() {
-            _launchAtStartup = launchAtStartupRet;
-            _handleStartupToggle(launchAtStartupRet);
+            _launchAtStartup = launchAtStartupValue;
+            _handleStartupToggle(launchAtStartupValue);
           });
         case 'updateAutoHideEnabled':
           final autoHideEnabled = call.arguments as bool;
-          setState(() {
-            _autoHideEnabled = autoHideEnabled;
-            if (_autoHideEnabled) {
-              _resetAutoHideTimer();
-            } else {
-              _autoHideTimer?.cancel();
-              if (!_isWindowVisible) {
-                _fadeIn();
-              }
-            }
-          });
-          _setupTray();
+          _toggleAutoHide(autoHideEnabled);
         case 'updateAutoHideDuration':
           final autoHideDuration = call.arguments as double;
           setState(() => _autoHideDuration = autoHideDuration);
+        case 'updateOpacity':
+          final opacity = call.arguments as double;
+          setState(() {
+            _opacity = opacity;
+            _lastOpacity = opacity;
+          });
         case 'updateLayout':
           final layoutName = call.arguments as String;
           setState(() {
-            if (_kanataEnabled) {
+            if ((_kanataEnabled || _useUserLayout) &&
+                _advancedSettingsEnabled) {
               _initialKeyboardLayout = availableLayouts
                   .firstWhere((layout) => layout.name == layoutName);
             } else {
@@ -446,105 +829,6 @@ class _MainAppState extends State<MainApp> with TrayListener {
             }
           });
           _fadeIn();
-        case 'updateUseUserLayout':
-          final useUserLayout = call.arguments as bool;
-          setState(() {
-            _useUserLayout = useUserLayout;
-            if (useUserLayout) {
-              _loadUserLayout();
-            } else {
-              // Revert back to the initial layout when turning off user layout
-              setState(() {
-                if (_initialKeyboardLayout != null && !_kanataEnabled) {
-                  _keyboardLayout = _initialKeyboardLayout!;
-                  if (kDebugMode) {
-                    print(
-                        'Reverted to initial layout: ${_initialKeyboardLayout!.name}');
-                  }
-                }
-              });
-              _fadeIn();
-            }
-          });
-        case 'updateShowAltLayout':
-          final showAltLayout = call.arguments as bool;
-          setState(() {
-            _showAltLayout = showAltLayout;
-          });
-          if (showAltLayout) {
-            _loadAltLayout();
-          }
-          _fadeIn();
-        case 'updateKanataEnabled':
-          final kanataEnabled = call.arguments as bool;
-          setState(() {
-            if (kanataEnabled && !_kanataEnabled) {
-              _initialKeyboardLayout = _keyboardLayout;
-              _kanataEnabled = true;
-              _loadKanataConfig().then((_) {
-                _kanataService.connect();
-              });
-            } else if (!kanataEnabled && _kanataEnabled) {
-              _kanataEnabled = false;
-              _kanataService.disconnect();
-              if (_initialKeyboardLayout != null) {
-                _keyboardLayout = _initialKeyboardLayout!;
-                _fadeIn();
-              }
-            }
-          });
-
-        // Mouse settings
-        case 'updateEnableMouse':
-          final enableMouse = call.arguments as bool;
-          setState(() => _enableMouse = enableMouse);
-        case 'updateMouseWidth':
-          final mouseWidth = call.arguments as double;
-          setState(() => _mouseWidth = mouseWidth);
-        case 'updateMouseHeight':
-          final mouseHeight = call.arguments as double;
-          setState(() => _mouseHeight = mouseHeight);
-        case 'updateMouseBorderRadius':
-          final mouseBorderRadius = call.arguments as double;
-          setState(() => _mouseBorderRadius = mouseBorderRadius);
-        case 'updateMouseLayout':
-          final mouseLayoutName = call.arguments as String;
-          setState(() => _mouseLayoutName = mouseLayoutName);
-        case 'updateMouseGap':
-          final mouseGap = call.arguments as double;
-          setState(() => _mouseGap = mouseGap);
-
-        // Appearance settings
-        case 'updateOpacity':
-          final opacity = call.arguments as double;
-          setState(() {
-            _opacity = opacity;
-            _lastOpacity = opacity;
-          });
-        case 'updateKeyColorPressed':
-          final keyColorPressed = call.arguments as int;
-          setState(() => _keyColorPressed = Color(keyColorPressed));
-        case 'updateKeyColorNotPressed':
-          final keyColorNotPressed = call.arguments as int;
-          setState(() => _keyColorNotPressed = Color(keyColorNotPressed));
-        case 'updateMarkerColor':
-          final markerColor = call.arguments as int;
-          setState(() => _markerColor = Color(markerColor));
-        case 'updateMarkerColorNotPressed':
-          final markerColorNotPressed = call.arguments as int;
-          setState(() => _markerColorNotPressed = Color(markerColorNotPressed));
-        case 'updateMarkerOffset':
-          final markerOffset = call.arguments as double;
-          setState(() => _markerOffset = markerOffset);
-        case 'updateMarkerWidth':
-          final markerWidth = call.arguments as double;
-          setState(() => _markerWidth = markerWidth);
-        case 'updateMarkerHeight':
-          final markerHeight = call.arguments as double;
-          setState(() => _markerHeight = markerHeight);
-        case 'updateMarkerBorderRadius':
-          final markerBorderRadius = call.arguments as double;
-          setState(() => _markerBorderRadius = markerBorderRadius);
 
         // Keyboard settings
         case 'updateKeymapStyle':
@@ -572,20 +856,60 @@ class _MainAppState extends State<MainApp> with TrayListener {
         case 'updateSplitWidth':
           final splitWidth = call.arguments as double;
           setState(() => _splitWidth = splitWidth);
+        case 'updateLastRowSplitWidth':
+          final lastRowSplitWidth = call.arguments as double;
+          setState(() => _lastRowSplitWidth = lastRowSplitWidth);
+        case 'updateKeyBorderThickness':
+          final keyBorderThickness = call.arguments as double;
+          setState(() => _keyBorderThickness = keyBorderThickness);
 
         // Text settings
         case 'updateFontFamily':
           final fontFamily = call.arguments as String;
-          setState(() => _fontFamily = fontFamily);
+          setState(() {
+            if (_customFontEnabled && _advancedSettingsEnabled) {
+              _initialFontFamily = fontFamily;
+            } else {
+              _fontFamily = fontFamily;
+            }
+          });
+        case 'updateFontWeight':
+          final fontWeightIndex = call.arguments as int;
+          setState(() => _fontWeight = FontWeight.values[fontWeightIndex]);
         case 'updateKeyFontSize':
           final keyFontSize = call.arguments as double;
           setState(() => _keyFontSize = keyFontSize);
         case 'updateSpaceFontSize':
           final spaceFontSize = call.arguments as double;
           setState(() => _spaceFontSize = spaceFontSize);
-        case 'updateFontWeight':
-          final fontWeightIndex = call.arguments as int;
-          setState(() => _fontWeight = FontWeight.values[fontWeightIndex]);
+
+        // Markers settings
+        case 'updateMarkerOffset':
+          final markerOffset = call.arguments as double;
+          setState(() => _markerOffset = markerOffset);
+        case 'updateMarkerWidth':
+          final markerWidth = call.arguments as double;
+          setState(() => _markerWidth = markerWidth);
+        case 'updateMarkerHeight':
+          final markerHeight = call.arguments as double;
+          setState(() => _markerHeight = markerHeight);
+        case 'updateMarkerBorderRadius':
+          final markerBorderRadius = call.arguments as double;
+          setState(() => _markerBorderRadius = markerBorderRadius);
+
+        // Colors settings
+        case 'updateKeyColorPressed':
+          final keyColorPressed = call.arguments as int;
+          setState(() => _keyColorPressed = Color(keyColorPressed));
+        case 'updateKeyColorNotPressed':
+          final keyColorNotPressed = call.arguments as int;
+          setState(() => _keyColorNotPressed = Color(keyColorNotPressed));
+        case 'updateMarkerColor':
+          final markerColor = call.arguments as int;
+          setState(() => _markerColor = Color(markerColor));
+        case 'updateMarkerColorNotPressed':
+          final markerColorNotPressed = call.arguments as int;
+          setState(() => _markerColorNotPressed = Color(markerColorNotPressed));
         case 'updateKeyTextColor':
           final keyTextColor = call.arguments as int;
           setState(() => _keyTextColor = Color(keyTextColor));
@@ -593,6 +917,203 @@ class _MainAppState extends State<MainApp> with TrayListener {
           final keyTextColorNotPressed = call.arguments as int;
           setState(
               () => _keyTextColorNotPressed = Color(keyTextColorNotPressed));
+        case 'updateKeyBorderColorPressed':
+          final keyBorderColorPressed = call.arguments as int;
+          setState(() => _keyBorderColorPressed = Color(keyBorderColorPressed));
+        case 'updateKeyBorderColorNotPressed':
+          final keyBorderColorNotPressed = call.arguments as int;
+          setState(() =>
+              _keyBorderColorNotPressed = Color(keyBorderColorNotPressed));
+
+        // Animations settings
+        case 'updateAnimationEnabled':
+          final animationEnabled = call.arguments as bool;
+          setState(() => _animationEnabled = animationEnabled);
+        case 'updateAnimationStyle':
+          final animationStyle = call.arguments as String;
+          setState(() => _animationStyle = animationStyle);
+        case 'updateAnimationDuration':
+          final animationDuration = call.arguments as double;
+          setState(() => _animationDuration = animationDuration);
+        case 'updateAnimationScale':
+          final animationScale = call.arguments as double;
+          setState(() => _animationScale = animationScale);
+
+        // HotKey settings
+        case 'updateHotKeysEnabled':
+          final hotKeysEnabled = call.arguments as bool;
+          setState(() {
+            _hotKeysEnabled = hotKeysEnabled;
+            _setupHotKeys();
+          });
+        case 'updateVisibilityHotKey':
+          final hotKeyJson = call.arguments as String;
+          final newHotKey = HotKey.fromJson(jsonDecode(hotKeyJson));
+          await hotKeyManager.unregister(_visibilityHotKey);
+          setState(() => _visibilityHotKey = newHotKey);
+          await _setupHotKeys();
+        case 'updateAutoHideHotKey':
+          final hotKeyJson = call.arguments as String;
+          final newHotKey = HotKey.fromJson(jsonDecode(hotKeyJson));
+          await hotKeyManager.unregister(_autoHideHotKey);
+          setState(() => _autoHideHotKey = newHotKey);
+          await _setupHotKeys();
+        case 'updateToggleMoveHotKey':
+          final hotKeyJson = call.arguments as String;
+          final newHotKey = HotKey.fromJson(jsonDecode(hotKeyJson));
+          await hotKeyManager.unregister(_toggleMoveHotKey);
+          setState(() => _toggleMoveHotKey = newHotKey);
+          await _setupHotKeys();
+        case 'updatePreferencesHotKey':
+          final hotKeyJson = call.arguments as String;
+          final newHotKey = HotKey.fromJson(jsonDecode(hotKeyJson));
+          await hotKeyManager.unregister(_preferencesHotKey);
+          setState(() => _preferencesHotKey = newHotKey);
+          await _setupHotKeys();
+
+        // Learn settings
+        case 'updateLearningModeEnabled':
+          final learningModeEnabled = call.arguments as bool;
+          setState(() => _learningModeEnabled = learningModeEnabled);
+        case 'updatePinkyLeftColor':
+          final color = call.arguments as int;
+          setState(() => _pinkyLeftColor = Color(color));
+        case 'updateRingLeftColor':
+          final color = call.arguments as int;
+          setState(() => _ringLeftColor = Color(color));
+        case 'updateMiddleLeftColor':
+          final color = call.arguments as int;
+          setState(() => _middleLeftColor = Color(color));
+        case 'updateIndexLeftColor':
+          final color = call.arguments as int;
+          setState(() => _indexLeftColor = Color(color));
+        case 'updateIndexRightColor':
+          final color = call.arguments as int;
+          setState(() => _indexRightColor = Color(color));
+        case 'updateMiddleRightColor':
+          final color = call.arguments as int;
+          setState(() => _middleRightColor = Color(color));
+        case 'updateRingRightColor':
+          final color = call.arguments as int;
+          setState(() => _ringRightColor = Color(color));
+        case 'updatePinkyRightColor':
+          final color = call.arguments as int;
+          setState(() => _pinkyRightColor = Color(color));
+
+        // Advanced settings
+        case 'updateAdvancedSettingsEnabled':
+          final advancedSettingsEnabled = call.arguments as bool;
+          setState(() {
+            _advancedSettingsEnabled = advancedSettingsEnabled;
+            if (!advancedSettingsEnabled) {
+              _initialShowAltLayout = _showAltLayout;
+              if (_kanataEnabled) {
+                _kanataService.disconnect();
+                _keyboardLayout = _initialKeyboardLayout!;
+              }
+              if (_useUserLayout) {
+                _keyboardLayout = _initialKeyboardLayout!;
+              }
+              _showAltLayout = false;
+              if (_customFontEnabled) {
+                _fontFamily = _initialFontFamily;
+              }
+              if (_keyboardFollowsMouse) {
+                _stopMouseTracking();
+              }
+            } else {
+              if (_initialShowAltLayout || _showAltLayout) {
+                _showAltLayout = true;
+              }
+              if (_keyboardFollowsMouse) {
+                _startMouseTracking();
+              }
+            }
+          });
+
+          if (_advancedSettingsEnabled) {
+            if (_kanataEnabled) {
+              _useKanata();
+            }
+            if (_useUserLayout && !_kanataEnabled) {
+              _loadUserLayout();
+            }
+            if (_showAltLayout) {
+              _loadAltLayout();
+            }
+            if (_customFontEnabled) {
+              _loadCustomFont();
+            }
+          } else {
+            _fadeIn();
+          }
+        case 'updateUseUserLayout':
+          final useUserLayout = call.arguments as bool;
+          setState(() {
+            _useUserLayout = useUserLayout;
+            if (useUserLayout) {
+              _loadUserLayout();
+            } else {
+              setState(() {
+                if (_initialKeyboardLayout != null && !_kanataEnabled) {
+                  _keyboardLayout = _initialKeyboardLayout!;
+                }
+              });
+              _fadeIn();
+            }
+          });
+        case 'updateShowAltLayout':
+          final showAltLayout = call.arguments as bool;
+          setState(() {
+            _showAltLayout = showAltLayout;
+          });
+          if (showAltLayout) {
+            _loadAltLayout();
+          }
+          _fadeIn();
+        case 'updateCustomFontEnabled':
+          final customFontEnabled = call.arguments as bool;
+          setState(() {
+            _customFontEnabled = customFontEnabled;
+            if (customFontEnabled) {
+              _loadCustomFont();
+            } else {
+              _fontFamily = _initialFontFamily;
+            }
+          });
+        case 'updateUse6ColLayout':
+          final use6ColLayout = call.arguments as bool;
+          setState(() {
+            _use6ColLayout = use6ColLayout;
+          });
+          _fadeIn();
+        case 'updateKanataEnabled':
+          final kanataEnabled = call.arguments as bool;
+          setState(() {
+            if (kanataEnabled && !_kanataEnabled) {
+              _initialKeyboardLayout = _keyboardLayout;
+              _kanataEnabled = true;
+              _useKanata();
+            } else if (!kanataEnabled && _kanataEnabled) {
+              _kanataEnabled = false;
+              _kanataService.disconnect();
+              if (_initialKeyboardLayout != null) {
+                _keyboardLayout = _initialKeyboardLayout!;
+                _fadeIn();
+              }
+            }
+          });
+        case 'updateKeyboardFollowsMouse':
+          final keyboardFollowsMouse = call.arguments as bool;
+          setState(() {
+            _keyboardFollowsMouse = keyboardFollowsMouse;
+            if (keyboardFollowsMouse && _advancedSettingsEnabled) {
+              _startMouseTracking();
+              windowManager.setAlignment(Alignment.bottomCenter);
+            } else {
+              _stopMouseTracking();
+            }
+          });
 
         default:
           throw UnimplementedError('Unimplemented method ${call.method}');
@@ -601,311 +1122,89 @@ class _MainAppState extends State<MainApp> with TrayListener {
     });
   }
 
-  void _setupKeyListener() {
-    ReceivePort receivePort = ReceivePort();
-    Isolate.spawn(setHook, receivePort.sendPort)
-        .then((_) {})
-        .catchError((error) {
-      if (kDebugMode) {
-        print('Error spawning Isolate: $error');
-      }
-    });
-
-    receivePort.listen(_handleKeyEvent);
-  }
-
-  void _handleKeyEvent(dynamic message) {
-    if (message[0] == 'keyboard') {
-      int keyCode = message[1];
-      bool isPressed = message[2];
-      bool isShiftDown = message[3];
-
-      if (kDebugMode) {
-        String key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
-        print(
-            'Key: ${key.padRight(10)}\tKeyCode: ${keyCode.toString().padRight(5)}\tPressed: ${isPressed.toString().padRight(5)}\tShift: $isShiftDown');
-      }
-
-      String key = getKeyFromKeyCodeShift(keyCode, isShiftDown);
-      bool currentState = _keyPressStates[key] ?? false;
-      if (currentState != isPressed) {
-        setState(() {
-          _keyPressStates[key] = isPressed;
-        });
-      }
-    } else if (message[0] == 'mouse' && _enableMouse) {
-      int buttonCode = message[1];
-      bool isPressed = message[2];
-
-      if (kDebugMode) {
-        String buttonName = getMouseButtonFromCode(buttonCode);
-        print(
-            'Mouse: ${buttonName.padRight(10)}\tButtonCode: ${buttonCode.toString().padRight(5)}\tPressed: ${isPressed.toString().padRight(5)}');
-      }
-
-      setState(() {
-        // Update the state of the specific button
-        _mouseButtonStates[buttonCode] = isPressed;
-      });
-    }
-
-    _resetAutoHideTimer();
-
-    if (_autoHideEnabled && !_isWindowVisible) {
-      _fadeIn();
-    }
-  }
-
-  void _resetAutoHideTimer() {
-    _autoHideTimer?.cancel();
-    if (_autoHideEnabled) {
-      _autoHideTimer = Timer(
-          Duration(milliseconds: (_autoHideDuration * 1000).round()),
-          _handleAutoHide);
-    }
-  }
-
-  void _handleAutoHide() {
-    if (_autoHideEnabled && _isWindowVisible) {
-      _fadeOut();
-    }
-  }
-
-  void _fadeOut() {
-    setState(() {
-      _lastOpacity = _opacity;
-      _opacity = 0.0;
-    });
-    Timer(_hideDelay, () {
-      setState(() {
-        _isWindowVisible = false;
-      });
-      windowManager.hide();
-    });
-  }
-
-  void _fadeIn() {
-    windowManager.show().then((_) {
-      setState(() {
-        _isWindowVisible = true;
-        _opacity = _lastOpacity;
-      });
-    });
-    _resetAutoHideTimer();
-  }
-
-  Future<void> _setupTray() async {
-    String iconPath = Platform.isWindows
-        ? 'assets/images/app_icon.ico'
-        : 'assets/images/app_icon.png';
-    await trayManager.setIcon(iconPath);
-    trayManager.setToolTip('OverKeys');
-    trayManager.setContextMenu(Menu(items: [
-      MenuItem.checkbox(
-        key: 'toggle_mouse_events',
-        label: 'Move',
-        checked: !_ignoreMouseEvents,
-        onClick: (menuItem) {
-          setState(() {
-            if (kDebugMode) {
-              print('Mouse Events Toggled');
-            }
-            _ignoreMouseEvents = !_ignoreMouseEvents;
-            windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
-            if (!_ignoreMouseEvents) {
-              autoHideBeforeMove = _autoHideEnabled;
-              _autoHideEnabled = false;
-              _autoHideTimer?.cancel();
-              if (!_isWindowVisible) {
-                _fadeIn();
-              }
-            } else {
-              _autoHideEnabled = autoHideBeforeMove;
-              if (_autoHideEnabled) {
-                _resetAutoHideTimer();
-              }
-            }
-          });
-          _fadeIn();
-        },
-      ),
-      MenuItem.separator(),
-      MenuItem.checkbox(
-        key: 'toggle_auto_hide',
-        label: 'Auto Hide',
-        checked: _autoHideEnabled,
-        disabled: !_ignoreMouseEvents,
-        onClick: (menuItem) {
-          setState(() {
-            if (kDebugMode) {
-              print('Auto Hide Toggled');
-            }
-            _autoHideEnabled = !_autoHideEnabled;
-            if (_autoHideEnabled) {
-              _resetAutoHideTimer();
-            } else {
-              _autoHideTimer?.cancel();
-              if (!_isWindowVisible) {
-                _fadeIn();
-              }
-            }
-          });
-        },
-      ),
-      MenuItem.separator(),
-      MenuItem(
-          key: 'reset_position',
-          label: 'Reset Position',
-          onClick: (menuItem) {
-            windowManager.setAlignment(Alignment.bottomCenter);
-          }),
-      MenuItem.separator(),
-      MenuItem(
-        key: 'preferences',
-        label: 'Preferences',
-        onClick: (menuItem) {
-          if (kDebugMode) {
-            print('Preferences Window Opened');
-          }
-          _showPreferences();
-        },
-      ),
-      MenuItem.separator(),
-      MenuItem(
-        key: 'exit',
-        label: 'Exit',
-      ),
-    ]));
-  }
-
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == 'toggle_auto_hide') {
-      DesktopMultiWindow.getAllSubWindowIds().then((windowIds) {
-        for (final id in windowIds) {
-          DesktopMultiWindow.invokeMethod(
-              id, 'updateAutoHideFromMainWindow', _autoHideEnabled);
-        }
-      });
-    } else if (menuItem.key == 'exit') {
-      DesktopMultiWindow.getAllSubWindowIds().then((windowIds) async {
-        for (final id in windowIds) {
-          await WindowController.fromWindowId(id).close();
-        }
-        await windowManager.close();
-        exit(0);
-      }).catchError((error) {
-        if (kDebugMode) {
-          print('Error closing windows: $error');
-        }
-        windowManager.close();
-        exit(0);
-      });
-      return;
-    }
-    _setupTray();
-  }
-
-  @override
-  void onTrayIconMouseDown() {
-    if (_isWindowVisible) {
-      _fadeOut();
-    } else {
-      _fadeIn();
-    }
-  }
-
-  @override
-  void onTrayIconRightMouseDown() {
-    trayManager.popUpContextMenu();
-  }
-
-  Future<void> _showPreferences() async {
-    try {
-      await DesktopMultiWindow.createWindow(jsonEncode({
-        'name': 'preferences',
-      }));
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error creating preferences window: $e');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OverKeys',
       theme: ThemeData(
-          fontFamily: _fontFamily,
-          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif']),
-      home: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: AnimatedOpacity(
-            opacity: _opacity,
-            duration: _fadeDuration,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onPanStart: (details) {
-                windowManager.startDragging();
-              },
-              child: Container(
-                color: Colors.transparent,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Keyboard
-                    KeyboardScreen(
-                      keyPressStates: _keyPressStates,
-                      layout: _keyboardLayout,
-                      showAltLayout: _showAltLayout,
-                      altLayout: _altLayout,
-                      keyColorPressed: _keyColorPressed,
-                      keyColorNotPressed: _keyColorNotPressed,
-                      markerColor: _markerColor,
-                      markerColorNotPressed: _markerColorNotPressed,
-                      markerOffset: _markerOffset,
-                      markerWidth: _markerWidth,
-                      markerHeight: _markerHeight,
-                      markerBorderRadius: _markerBorderRadius,
-                      keymapStyle: _keymapStyle,
-                      showTopRow: _showTopRow,
-                      showGraveKey: _showGraveKey,
-                      keySize: _keySize,
-                      keyBorderRadius: _keyBorderRadius,
-                      keyPadding: _keyPadding,
-                      spaceWidth: _spaceWidth,
-                      splitWidth: _splitWidth,
-                      keyFontSize: _keyFontSize,
-                      spaceFontSize: _spaceFontSize,
-                      fontWeight: _fontWeight,
-                      keyTextColor: _keyTextColor,
-                      keyTextColorNotPressed: _keyTextColorNotPressed,
-                    ),
-                    // Spacing between keyboard and mouse
-                    if (_enableMouse) SizedBox(width: _mouseGap),
-                    // Mouse
-                    if (_enableMouse)
-                      MouseScreen(
-                        buttonStates: _mouseButtonStates,
-                        mouseColorPressed: _keyColorPressed,
-                        mouseColorNotPressed: _keyColorNotPressed,
-                        mouseWidth: _mouseWidth,
-                        mouseHeight: _mouseHeight,
-                        mouseBorderRadius: _mouseBorderRadius,
-                        markerColor: _markerColor,
-                        markerColorNotPressed: _markerColorNotPressed,
+        brightness: _brightness,
+        useMaterial3: true,
+      ),
+      home: Builder(builder: (context) {
+        return Scaffold(
+          body: Stack(
+            children: [
+              AnimatedOpacity(
+                opacity: _opacity,
+                duration: _fadeDuration,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onPanStart: (_) => windowManager.startDragging(),
+                  child: Container(
+                    color: Colors.transparent,
+                    child: Center(
+                      child: KeyboardScreen(
+                        layout: _keyboardLayout,
+                        keymapStyle: _keymapStyle,
+                        showTopRow: _showTopRow,
+                        showGraveKey: _showGraveKey,
+                        keySize: _keySize,
+                        keyBorderRadius: _keyBorderRadius,
+                        keyPadding: _keyPadding,
+                        spaceWidth: _spaceWidth,
+                        splitWidth: _splitWidth,
+                        lastRowSplitWidth: _lastRowSplitWidth,
+                        keyBorderThickness: _keyBorderThickness,
+                        keyFontSize: _keyFontSize,
+                        spaceFontSize: _spaceFontSize,
+                        fontWeight: _fontWeight,
+                        markerOffset: _markerOffset,
                         markerWidth: _markerWidth,
                         markerHeight: _markerHeight,
                         markerBorderRadius: _markerBorderRadius,
-                        markerOffset: _markerOffset,
-                        hasSideButtons: _mouseLayoutName == 'Standard Mouse',
+                        keyColorPressed: _keyColorPressed,
+                        keyColorNotPressed: _keyColorNotPressed,
+                        markerColor: _markerColor,
+                        markerColorNotPressed: _markerColorNotPressed,
+                        keyTextColor: _keyTextColor,
+                        keyTextColorNotPressed: _keyTextColorNotPressed,
+                        keyBorderColorPressed: _keyBorderColorPressed,
+                        keyBorderColorNotPressed: _keyBorderColorNotPressed,
+                        animationEnabled: _animationEnabled,
+                        animationStyle: _animationStyle,
+                        animationDuration: _animationDuration,
+                        animationScale: _animationScale,
+                        learningModeEnabled: _learningModeEnabled,
+                        pinkyLeftColor: _pinkyLeftColor,
+                        ringLeftColor: _ringLeftColor,
+                        middleLeftColor: _middleLeftColor,
+                        indexLeftColor: _indexLeftColor,
+                        indexRightColor: _indexRightColor,
+                        middleRightColor: _middleRightColor,
+                        ringRightColor: _ringRightColor,
+                        pinkyRightColor: _pinkyRightColor,
+                        showAltLayout:
+                            _advancedSettingsEnabled && _showAltLayout,
+                        altLayout: _altLayout,
+                        use6ColLayout: _use6ColLayout,
+                        keyPressStates: _keyPressStates,
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          )),
+              StatusOverlay(
+                visible: _showStatusOverlay,
+                message: _overlayMessage,
+                icon: _statusIcon,
+                backgroundColor: _keyColorNotPressed,
+                textColor: _keyTextColorNotPressed,
+                keySize: _keySize,
+                keyBorderRadius: _keyBorderRadius,
+              ),
+            ],
+          ),
+        );
+      }),
       debugShowCheckedModeBanner: false,
     );
   }

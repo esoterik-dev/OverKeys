@@ -9,11 +9,13 @@
     A customizable, open-source on-screen keyboard visualizer for alternative layouts!
     <br />
     <br />
-    <a href="https://github.com/conventoangelo/OverKeys/releases">Download Release</a>
+    <a href="#getting-started">Install Now</a>
     ·
-    <a href="https://github.com/conventoangelo/OverKeys/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/conventoangelo/OverKeys/issues/new?template=bug_report.md">Report Bug</a>
     ·
-    <a href="https://github.com/conventoangelo/OverKeys/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/conventoangelo/OverKeys/issues/new?template=feature_request.md">Request a Feature</a>
+    ·
+    <a href="https://github.com/conventoangelo/OverKeys/discussions/new?category=q-a">Ask a Question</a>
   </p>
 </div>
 
@@ -24,8 +26,9 @@
     <li><a href="#about-the-project">About The Project</a></li>
     <li><a href="#features">Features</a></li>
     <li><a href="#getting-started">Getting Started</a></li>
-    <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#documentation">Documentation</a></li>
     <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#building-from-source">Building from Source</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
@@ -40,9 +43,9 @@
 
 <https://github.com/user-attachments/assets/c687a448-52b0-41bc-9b6b-07e61c2d3b31>
 
-OverKeys is an open-source on-screen keyboard designed for users to practice alternative keyboard layouts, such as **Canary**, **Colemak**, **Dvorak**, and many more. Built in [**Flutter**](https://flutter.dev/), it allows full customizability, making it perfect for users learning or working with non-traditional layouts.
+OverKeys is an open-source on-screen keyboard visualizer designed for users to practice alternative keyboard layouts, such as **Canary**, **Colemak**, **Dvorak**, and many more. Built in [**Flutter**](https://flutter.dev/), it allows full customizability, making it perfect for users learning or working with non-traditional layouts.
 
-This project was initially developed to help with system-wide practice of the **Canary layout**, but has since evolved to support multiple layouts and customization options.
+This project was initially developed to help with system-wide practice of the **Canary layout**, but has since evolved to support multiple layouts, layer switching integration, and customization options.
 
 ### Samples
 
@@ -120,117 +123,64 @@ This project was initially developed to help with system-wide practice of the **
       <li>Workman</li>
     </ul>
   </details>
-- **Customizable styles**: Change colors, fonts, sizes, offsets, and key styles to fit your preference.
-- **Always on top**: Keep the keyboard on top of all windows for constant access.
-- **Auto-hide**: The keyboard hides automatically when not in use.
-- **Keymap layouts**: Supports keymap layouts such as staggered, matrix, and split matrix.
-- [**Layer switching (Kanata)**](#layer-switching-through-kanata-tcp): Connect to [Kanata](https://github.com/jtroo/kanata) through TCP to dynamically display the active layer.
-- **User configurations**: Easily add and use custom keyboard layouts through `overkeys_config.json`.
-- **Side-by-side layouts**: Display alternative layouts alongside the default layout, which is useful for showing multiple languages at once. Note that key press highlighting is determined by the `defaultLayout`.
-- **Top row/Number row**: Optional row above the main keyboard that can show numbers or other user-configurated keys.
+- **Customizable styles**: Change colors, fonts, sizes, offsets, and key styles
+- **Always on top**: Keep the keyboard visible above all windows
+- **Auto-hide**: The keyboard hides automatically when not in use
+- **Keymap layouts**: Supports staggered, matrix, and split matrix (5-col and [6-col](/docs/advanced/6-column-layouts.md)) layouts
+- **[Layer switching (Kanata)](./docs/advanced/kanata-integration.md)**: Connect to [Kanata](https://github.com/jtroo/kanata) through TCP to dynamically display the active layer
+- **User configurations**: Add and use [custom keyboard layouts](/docs/advanced/custom-layouts.md) through configuration files
+- **Side-by-side layouts**: Display [alternative layouts](/docs/advanced/alternative-layouts.md) alongside the default layout
+- **Top row/Number row**: Optional row above the main keyboard for numbers or user-configured keys
+
+For complete feature details, see the [documentation](docs/index.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Getting Started
 
-Follow these instructions to set up OverKeys on your local machine.
-
-### Prerequisites
-
-- Windows OS
-
 ### Installation
 
-1. Download the latest [EXE installer](https://github.com/conventoangelo/OverKeys/releases).
-2. Run the installer and follow the on-screen instructions.
-3. Once installed, OverKeys will be available for use.
+OverKeys can be installed through several methods:
 
-## Configuration
+1. **Using Winget (Recommended)**
 
-To change the app settings, right-click the OverKeys icon in the system tray and select **Preferences**. A separate window will open, displaying the available settings.
+   ```pwsh
+   winget install AngeloConvento.OverKeys
+   ```
 
-### Loading Your Own Layout
+2. **Using the Installer**
 
-To load your own keyboard layout, follow these steps:
+   - Download and run the latest [EXE installer](https://github.com/conventoangelo/OverKeys/releases/latest).
 
-1. **Access Configuration**:
+3. **Portable Version**
+   - Downloade and extract the [portable ZIP file](https://github.com/conventoangelo/OverKeys/releases/latest)
 
-   - Right-click the OverKeys icon in the system tray
-   - Select **Preferences**
-   - Go to the **General** tab
-   - Click **Open Config** option
+For detailed installation instructions, see the [Installation Guide](/docs/getting-started/installation.md).
 
-2. **Edit Configuration**:
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-   - Edit the `overkeys_config.json` file that opens in your default text editor
-   - Add your custom layouts as needed in the `userLayouts` section. Use the key symbols found in [mappings.dart](lib/models/mappings.dart) and [key_code.dart](lib/utils/key_code.dart) as reference for key names and special characters that OverKeys recognize.
-   - Set the `defaultUserLayout` property to specify which layout to use (can be one of your custom layouts or any supported layout)
-   - Save the file
-     - It is recommended to make a backup copy of `overkeys_config.json`, as testing has shown that it may occasionally revert to the default configuration unexpectedly
+## Documentation
 
-3. **Apply Changes**:
+Complete documentation for OverKeys is available in the [docs](docs/index.md) folder:
 
-   - Restart OverKeys
-   - Return to **Preferences** > **General** tab
-   - Toggle on **Use custom layout from config**
-   - Your custom layout should now be active
+### Getting Started (Docs)
 
-### Layer Switching through Kanata TCP
+- [Installation Guide](/docs/getting-started/installation.md)
+- [Basic Usage](/docs/getting-started/basic-usage.md)
 
-> **Note**: Since OverKeys uses Windows LLHOOK for key detection, this feature is only guaranteed to work with Kanata implementations that also use Windows LLHOOK. Integration has been tested and confirmed working with kanata_gui.exe.
+### User Guide
 
-Demos:
+- [Preferences](/docs/user-guide/preferences.md)
+- [Learning Mode](/docs/user-guide/learning-mode.md) - Use the specialized color scheme for learning new layouts
+- [Supported Layouts](#features) - View the list of built-in keyboard layouts
 
-<details>
-  <summary>With Kanata Debug</summary>
-  
-<https://github.com/user-attachments/assets/5e7878d8-b51d-447d-946d-6ffeb063701c>
-  
-</details>
+### Advanced Features
 
-<details>
-  <summary>With Kanata Shortcut</summary>
-  
-<https://github.com/user-attachments/assets/ab50455d-52e4-44b5-a409-c90f1e07c15b>
-  
-</details>
-
-1. **Access Configuration**:
-
-   - Right-click the OverKeys icon in the system tray
-   - Select **Preferences**
-   - Go to the **General** tab
-   - Click **Open Config** option
-
-2. **Edit Configuration**:
-
-   - Edit the `overkeys_config.json` file that opens in your default text editor
-   - Add your kanata layers as needed in the `userLayouts` section. Use the key symbols found in [mappings.dart](lib/models/mappings.dart) and [key_code.dart](lib/utils/key_code.dart) as reference for key names and special characters that OverKeys recognize.
-     - You may also add unsupported keys (e.g., COPY, PASTE). They would appear on the keyboard upon layer switching but won't be triggered due to not being supported (yet?)
-   - Define the default layer you use in `defaultUserLayout`
-   - Define the TCP address you want to use in `kanataHost` and `kanataPort` (defaults are `127.0.0.1` and `4039`)
-   - Save the file
-     - It is recommended to make a backup copy of `overkeys_config.json`, as testing has shown that it may occasionally revert to the default configuration unexpectedly
-   - Restart OverKeys
-
-3. **Kanata Configuration**
-
-   - When running Kanata, (assuming that the `kanata.kbd` is in the same directory as the kanata executable so no more `-c` flag needed) use the `-p` flag with the same address and port:
-
-     ```pwsh
-     kanata.exe -p ${kanataHost}:${kanataPort}
-     ```
-
-   - Tip: Create a shortcut for `kanata_gui.exe` and place it in the Windows Startup folder (`C:\Users\%USERNAME%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup`). This allows Kanata to launch after OverKeys on system boot. Add the parameter `-p 127.0.0.1:4039` (or your custom `kanataHost:kanataPort`) to the shortcut's target field in Properties. When your PC starts, both applications will open automatically and connect.
-
-4. **Apply Changes**:
-
-   - Return to **Preferences** > **General** tab
-   - Toggle on **Connect to Kanata**
-   - OverKeys should now be connected to Kanata
-   - When you switch to any layer other than your `defaultUserLayout`, OverKeys will temporarily disable its auto-hide feature until you return to the default layer
-
-> **Note**: If you've previously enabled "Connect to Kanata" in a session, OverKeys will automatically attempt to connect the next time it opens. It's recommended to open OverKeys first, then launch Kanata, to avoid detecting double key presses (as OverKeys would otherwise detect both the `defsrc` layer key and the injected kanata key press).
+- [Custom Layouts](/docs/advanced/custom-layouts.md)
+- [Alternative Layouts](/docs/advanced/alternative-layouts.md)
+- [6-Column Layouts](/docs/advanced/6-column-layouts.md)
+- [Kanata Integration](/docs/advanced/kanata-integration.md)
+- [Supported Keys](/docs/advanced/supported-keys.md)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -244,57 +194,27 @@ Contributions are what make the open-source community such an amazing place to l
 4. Push to the Branch (`git push origin feat/amazing-feature`).
 5. Open a Pull Request.
 
-### Building
+## Building from Source
 
-1. **Install Flutter**:
+1. **Prerequisites**:
 
-   - Follow the official [Flutter installation guide](https://flutter.dev/docs/get-started/install) to set up Flutter on your machine.
+   - Install [Flutter](https://flutter.dev/docs/get-started/install)
+   - Install [Git](https://git-scm.com/downloads/win)
 
-2. **Install Git**:
+2. **Clone and Build**:
 
-   - Download and install using the installer from the [Git website](https://git-scm.com/downloads/win).
-   - Alternatively, if you have `winget` installed, you can use the following command in your terminal:
+   ```pwsh
+   git clone https://github.com/conventoangelo/OverKeys.git
+   cd OverKeys
+   flutter pub get
+   flutter run -d windows  # For testing
+   # OR
+   flutter build windows   # For release build
+   ```
 
-     ```sh
-     winget install --id Git.Git -e --source winget
-     ```
+3. **Find the Build**:
 
-3. **Clone the Repository**:
-
-   - Open a terminal and navigate to the folder where you want to clone the repository using the `cd` command. For example:
-
-     ```sh
-     cd path/to/your/folder
-     ```
-
-   - With Git installed, use the following command in your terminal:
-
-     ```sh
-     git clone https://github.com/conventoangelo/OverKeys.git
-     ```
-
-4. **Build the Project Locally**:
-
-   - Open a terminal and navigate to the root directory of the project.
-   - Run the following command to get the Flutter dependencies:
-
-     ```sh
-     flutter pub get
-     ```
-
-   - Run the app with the terminal open:
-
-     ```sh
-     flutter run -d windows
-     ```
-
-   - Alternatively, build the project by running:
-
-     ```sh
-     flutter build windows
-     ```
-
-   - Once the build is complete, you can find the executable file in `..\OverKeys\build\windows\x64\runner\Release`.
+   - Release executable is located at `build\windows\x64\runner\Release`
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -317,14 +237,10 @@ Project Link: [https://github.com/conventoangelo/OverKeys](https://github.com/co
 
 ## Acknowledgments
 
-- [win32](https://win32.pub/) - Access common Win32 APIs directly from Dart using FFI — no C required!
-- [leanflutter.dev](https://leanflutter.dev/our-packages/)
-  - [window_manager](https://pub.dev/packages/window_manager) - A plugin that allows Flutter desktop apps to resizing and repositioning the window.
-  - [tray_manager](https://pub.dev/packages/tray_manager) - A plugin that allows Flutter desktop apps to defines system tray.
-  - [launch_at_startup](https://pub.dev/packages/launch_at_startup) - A plugin that allows Flutter desktop apps to Auto launch on startup / login.
-- [desktop_multi_window](https://pub.dev/packages/desktop_multi_window) - A flutter plugin that create and manager multi window in desktop.
-- [flex_color_picker](https://github.com/rydmike/flex_color_picker) - A highly customizable Flutter color picker.
-- [Best-README-Template](https://github.com/othneildrew/Best-README-Template) - An awesome README template to jumpstart your projects!
+- [win32](https://win32.pub/) - Enable direct Win32 API access from Dart using FFI without requiring C code
+- [leanflutter.dev](https://leanflutter.dev/our-packages/) - Provider of several essential Flutter desktop packages used in this project
+- [desktop_multi_window](https://pub.dev/packages/desktop_multi_window) - Flutter plugin for creating and managing multiple windows in desktop applications
+- [flex_color_picker](https://github.com/rydmike/flex_color_picker) - Highly customizable and versatile color picker for Flutter applications
 - Alaine - for creating the beautiful OverKeys logo with love and care.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
