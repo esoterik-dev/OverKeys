@@ -104,6 +104,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
     key: PhysicalKeyboardKey.keyR,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
   );
+  bool _enableVisibilityHotKey = true;
+  bool _enableAutoHideHotKey = true;
+  bool _enableToggleMoveHotKey = true;
+  bool _enablePreferencesHotKey = true;
 
   // Learn settings
   bool _learningModeEnabled = false;
@@ -250,6 +254,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       _autoHideHotKey = prefs['autoHideHotKey'];
       _toggleMoveHotKey = prefs['toggleMoveHotKey'];
       _preferencesHotKey = prefs['preferencesHotKey'];
+      _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
+      _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
+      _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
+      _enablePreferencesHotKey = prefs['enablePreferencesHotKey'] ?? true;
 
       // Learn settings
       _learningModeEnabled = prefs['learningModeEnabled'] ?? false;
@@ -328,6 +336,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       'autoHideHotKey': _autoHideHotKey,
       'toggleMoveHotKey': _toggleMoveHotKey,
       'preferencesHotKey': _preferencesHotKey,
+      'enableVisibilityHotKey': _enableVisibilityHotKey,
+      'enableAutoHideHotKey': _enableAutoHideHotKey,
+      'enableToggleMoveHotKey': _enableToggleMoveHotKey,
+      'enablePreferencesHotKey': _enablePreferencesHotKey,
 
       // Learn settings
       'learningModeEnabled': _learningModeEnabled,
@@ -368,6 +380,11 @@ class _PreferencesScreenState extends State<PreferencesScreen>
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = ThemeManager.getTheme(_brightness);
+    final FocusNode keyboardFocusNode = FocusNode();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      keyboardFocusNode.requestFocus();
+    });
 
     return MaterialApp(
       theme: theme,
@@ -380,25 +397,34 @@ class _PreferencesScreenState extends State<PreferencesScreen>
         Locale('en', ''),
       ],
       home: Builder(builder: (context) {
-        return Scaffold(
-          body: Row(
-            children: [
-              _buildNavigationPanel(context),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding:
-                            const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
-                        child: _buildCurrentTabContent(),
+        return KeyboardListener(
+          focusNode: keyboardFocusNode,
+          onKeyEvent: (KeyEvent keyEvent) {
+            if (keyEvent is KeyDownEvent &&
+                keyEvent.logicalKey == LogicalKeyboardKey.escape) {
+              DesktopMultiWindow.invokeMethod(0, 'closePreferencesWindow');
+            }
+          },
+          child: Scaffold(
+            body: Row(
+              children: [
+                _buildNavigationPanel(context),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding:
+                              const EdgeInsets.fromLTRB(20.0, 40.0, 20.0, 20.0),
+                          child: _buildCurrentTabContent(),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       }),
@@ -498,7 +524,7 @@ class _PreferencesScreenState extends State<PreferencesScreen>
       case 'Animations':
         return const Icon(LucideIcons.sparkles);
       case 'Hotkeys':
-        return const Icon(LucideIcons.layers);
+        return const Icon(LucideIcons.zap);
       case 'Learn':
         return const Icon(LucideIcons.graduationCap);
       case 'Advanced':
@@ -714,6 +740,10 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           autoHideHotKey: _autoHideHotKey,
           toggleMoveHotKey: _toggleMoveHotKey,
           preferencesHotKey: _preferencesHotKey,
+          enableVisibilityHotKey: _enableVisibilityHotKey,
+          enableAutoHideHotKey: _enableAutoHideHotKey,
+          enableToggleMoveHotKey: _enableToggleMoveHotKey,
+          enablePreferencesHotKey: _enablePreferencesHotKey,
           updateHotKeysEnabled: (value) {
             setState(() => _hotKeysEnabled = value);
             _updateMainWindow('updateHotKeysEnabled', value);
@@ -733,6 +763,22 @@ class _PreferencesScreenState extends State<PreferencesScreen>
           updatePreferencesHotKey: (value) {
             setState(() => _preferencesHotKey = value);
             _updateMainWindow('updatePreferencesHotKey', value);
+          },
+          updateEnableVisibilityHotKey: (value) {
+            setState(() => _enableVisibilityHotKey = value);
+            _updateMainWindow('updateEnableVisibilityHotKey', value);
+          },
+          updateEnableAutoHideHotKey: (value) {
+            setState(() => _enableAutoHideHotKey = value);
+            _updateMainWindow('updateEnableAutoHideHotKey', value);
+          },
+          updateEnableToggleMoveHotKey: (value) {
+            setState(() => _enableToggleMoveHotKey = value);
+            _updateMainWindow('updateEnableToggleMoveHotKey', value);
+          },
+          updateEnablePreferencesHotKey: (value) {
+            setState(() => _enablePreferencesHotKey = value);
+            _updateMainWindow('updateEnablePreferencesHotKey', value);
           },
         );
       case 'Learn':

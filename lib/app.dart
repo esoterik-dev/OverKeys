@@ -113,6 +113,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     key: PhysicalKeyboardKey.keyR,
     modifiers: [HotKeyModifier.alt, HotKeyModifier.control],
   );
+  bool _enableVisibilityHotKey = true;
+  bool _enableAutoHideHotKey = true;
+  bool _enableToggleMoveHotKey = true;
+  bool _enablePreferencesHotKey = true;
 
   // Learn settings
   bool _learningModeEnabled = false;
@@ -141,6 +145,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   final PreferencesService _prefsService = PreferencesService();
   final KanataService _kanataService = KanataService();
   final Map<String, bool> _keyPressStates = {};
+  Map<String, String>? _customShiftMappings;
 
   // Overlay
   bool _showStatusOverlay = false;
@@ -164,6 +169,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     _setupMethodHandler();
     _initStartup();
     _setupKanataLayerChangeHandler();
+    _loadCustomShiftMappings();
     if (_advancedSettingsEnabled) {
       if (_useUserLayout) {
         _loadUserLayout();
@@ -274,6 +280,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       _autoHideHotKey = prefs['autoHideHotKey'];
       _toggleMoveHotKey = prefs['toggleMoveHotKey'];
       _preferencesHotKey = prefs['preferencesHotKey'];
+      _enableVisibilityHotKey = prefs['enableVisibilityHotKey'] ?? true;
+      _enableAutoHideHotKey = prefs['enableAutoHideHotKey'] ?? true;
+      _enableToggleMoveHotKey = prefs['enableToggleMoveHotKey'] ?? true;
+      _enablePreferencesHotKey = prefs['enablePreferencesHotKey'] ?? true;
 
       // Learn settings
       _learningModeEnabled = prefs['learningModeEnabled'];
@@ -353,6 +363,10 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
       'autoHideHotKey': _autoHideHotKey,
       'toggleMoveHotKey': _toggleMoveHotKey,
       'preferencesHotKey': _preferencesHotKey,
+      'enableVisibilityHotKey': _enableVisibilityHotKey,
+      'enableAutoHideHotKey': _enableAutoHideHotKey,
+      'enableToggleMoveHotKey': _enableToggleMoveHotKey,
+      'enablePreferencesHotKey': _enablePreferencesHotKey,
 
       // Learn settings
       'learningModeEnabled': _learningModeEnabled,
@@ -376,6 +390,14 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     };
 
     await _prefsService.saveAllPreferences(prefs);
+  }
+
+  Future<void> _loadCustomShiftMappings() async {
+    final configService = ConfigService();
+    final mappings = await configService.getCustomShiftMappings();
+    setState(() {
+      _customShiftMappings = mappings;
+    });
   }
 
   void _setupKanataLayerChangeHandler() {
@@ -655,59 +677,68 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
 
     if (!_hotKeysEnabled) return;
 
-    await hotKeyManager.register(
-      _autoHideHotKey,
-      keyDownHandler: (hotKey) {
-        if (kDebugMode) {
-          print(
-              'Auto-hide hotkey triggered: ${hotKey.toJson()} - toggling to ${!_autoHideEnabled}');
-        }
-        _toggleAutoHide(!_autoHideEnabled);
-      },
-    );
-
-    await hotKeyManager.register(
-      _visibilityHotKey,
-      keyDownHandler: (hotKey) {
-        if (kDebugMode) {
-          print(
-              'Visibility hotkey triggered: ${hotKey.toJson()} - toggling force hide to ${!_forceHide}');
-        }
-        setState(() {
-          onTrayIconMouseDown();
-        });
-      },
-    );
-
-    await hotKeyManager.register(
-      _toggleMoveHotKey,
-      keyDownHandler: (hotKey) {
-        if (kDebugMode) {
-          print('Toggle move hotkey triggered: ${hotKey.toJson()}');
-        }
-        setState(() {
-          _ignoreMouseEvents = !_ignoreMouseEvents;
-          windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
-          if (_ignoreMouseEvents) {
-            _fadeIn();
-            _showOverlay('Move disabled', const Icon(LucideIcons.lock));
-          } else {
-            _showOverlay('Move enabled', const Icon(LucideIcons.move));
+    if (_enableAutoHideHotKey) {
+      await hotKeyManager.register(
+        _autoHideHotKey,
+        keyDownHandler: (hotKey) {
+          if (kDebugMode) {
+            print(
+                'Auto-hide hotkey triggered: ${hotKey.toJson()} - toggling to ${!_autoHideEnabled}');
           }
-        });
-      },
-    );
+          _toggleAutoHide(!_autoHideEnabled);
+        },
+      );
+    }
 
-    await hotKeyManager.register(
-      _preferencesHotKey,
-      keyDownHandler: (hotKey) {
-        if (kDebugMode) {
-          print('Preferences hotkey triggered: ${hotKey.toJson()}');
-        }
-        _showOverlay('Opening Preferences', const Icon(LucideIcons.appWindow));
-        _showPreferences();
-      },
-    );
+    if (_enableVisibilityHotKey) {
+      await hotKeyManager.register(
+        _visibilityHotKey,
+        keyDownHandler: (hotKey) {
+          if (kDebugMode) {
+            print(
+                'Visibility hotkey triggered: ${hotKey.toJson()} - toggling force hide to ${!_forceHide}');
+          }
+          setState(() {
+            onTrayIconMouseDown();
+          });
+        },
+      );
+    }
+
+    if (_enableToggleMoveHotKey) {
+      await hotKeyManager.register(
+        _toggleMoveHotKey,
+        keyDownHandler: (hotKey) {
+          if (kDebugMode) {
+            print('Toggle move hotkey triggered: ${hotKey.toJson()}');
+          }
+          setState(() {
+            _ignoreMouseEvents = !_ignoreMouseEvents;
+            windowManager.setIgnoreMouseEvents(_ignoreMouseEvents);
+            if (_ignoreMouseEvents) {
+              _fadeIn();
+              _showOverlay('Move disabled', const Icon(LucideIcons.lock));
+            } else {
+              _showOverlay('Move enabled', const Icon(LucideIcons.move));
+            }
+          });
+        },
+      );
+    }
+
+    if (_enablePreferencesHotKey) {
+      await hotKeyManager.register(
+        _preferencesHotKey,
+        keyDownHandler: (hotKey) {
+          if (kDebugMode) {
+            print('Preferences hotkey triggered: ${hotKey.toJson()}');
+          }
+          _showOverlay(
+              'Opening Preferences', const Icon(LucideIcons.appWindow));
+          _showPreferences();
+        },
+      );
+    }
   }
 
   @override
@@ -744,6 +775,7 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
     } else {
       _fadeIn();
     }
+    windowManager.blur();
   }
 
   @override
@@ -970,6 +1002,22 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
           await hotKeyManager.unregister(_preferencesHotKey);
           setState(() => _preferencesHotKey = newHotKey);
           await _setupHotKeys();
+        case 'updateEnableVisibilityHotKey':
+          final enabled = call.arguments as bool;
+          setState(() => _enableVisibilityHotKey = enabled);
+          await _setupHotKeys();
+        case 'updateEnableAutoHideHotKey':
+          final enabled = call.arguments as bool;
+          setState(() => _enableAutoHideHotKey = enabled);
+          await _setupHotKeys();
+        case 'updateEnableToggleMoveHotKey':
+          final enabled = call.arguments as bool;
+          setState(() => _enableToggleMoveHotKey = enabled);
+          await _setupHotKeys();
+        case 'updateEnablePreferencesHotKey':
+          final enabled = call.arguments as bool;
+          setState(() => _enablePreferencesHotKey = enabled);
+          await _setupHotKeys();
 
         // Learn settings
         case 'updateLearningModeEnabled':
@@ -1115,6 +1163,9 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
             }
           });
 
+        case 'closePreferencesWindow':
+          await WindowController.fromWindowId(fromWindowId).close();
+          break;
         default:
           throw UnimplementedError('Unimplemented method ${call.method}');
       }
@@ -1126,85 +1177,83 @@ class _MainAppState extends State<MainApp> with TrayListener, WindowListener {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(
-        brightness: _brightness,
-        useMaterial3: true,
-      ),
-      home: Builder(builder: (context) {
-        return Scaffold(
-          body: Stack(
-            children: [
-              AnimatedOpacity(
-                opacity: _opacity,
-                duration: _fadeDuration,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanStart: (_) => windowManager.startDragging(),
-                  child: Container(
-                    color: Colors.transparent,
-                    child: Center(
-                      child: KeyboardScreen(
-                        layout: _keyboardLayout,
-                        keymapStyle: _keymapStyle,
-                        showTopRow: _showTopRow,
-                        showGraveKey: _showGraveKey,
-                        keySize: _keySize,
-                        keyBorderRadius: _keyBorderRadius,
-                        keyPadding: _keyPadding,
-                        spaceWidth: _spaceWidth,
-                        splitWidth: _splitWidth,
-                        lastRowSplitWidth: _lastRowSplitWidth,
-                        keyBorderThickness: _keyBorderThickness,
-                        keyFontSize: _keyFontSize,
-                        spaceFontSize: _spaceFontSize,
-                        fontWeight: _fontWeight,
-                        markerOffset: _markerOffset,
-                        markerWidth: _markerWidth,
-                        markerHeight: _markerHeight,
-                        markerBorderRadius: _markerBorderRadius,
-                        keyColorPressed: _keyColorPressed,
-                        keyColorNotPressed: _keyColorNotPressed,
-                        markerColor: _markerColor,
-                        markerColorNotPressed: _markerColorNotPressed,
-                        keyTextColor: _keyTextColor,
-                        keyTextColorNotPressed: _keyTextColorNotPressed,
-                        keyBorderColorPressed: _keyBorderColorPressed,
-                        keyBorderColorNotPressed: _keyBorderColorNotPressed,
-                        animationEnabled: _animationEnabled,
-                        animationStyle: _animationStyle,
-                        animationDuration: _animationDuration,
-                        animationScale: _animationScale,
-                        learningModeEnabled: _learningModeEnabled,
-                        pinkyLeftColor: _pinkyLeftColor,
-                        ringLeftColor: _ringLeftColor,
-                        middleLeftColor: _middleLeftColor,
-                        indexLeftColor: _indexLeftColor,
-                        indexRightColor: _indexRightColor,
-                        middleRightColor: _middleRightColor,
-                        ringRightColor: _ringRightColor,
-                        pinkyRightColor: _pinkyRightColor,
-                        showAltLayout:
-                            _advancedSettingsEnabled && _showAltLayout,
-                        altLayout: _altLayout,
-                        use6ColLayout: _use6ColLayout,
-                        keyPressStates: _keyPressStates,
-                      ),
+          fontFamily: _fontFamily,
+          fontFamilyFallback: const ['GeistMono', 'Manrope', 'sans-serif']),
+      home: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            AnimatedOpacity(
+              opacity: _opacity,
+              duration: _fadeDuration,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (_) => windowManager.startDragging(),
+                child: Container(
+                  color: Colors.transparent,
+                  child: Center(
+                    child: KeyboardScreen(
+                      layout: _keyboardLayout,
+                      keymapStyle: _keymapStyle,
+                      showTopRow: _showTopRow,
+                      showGraveKey: _showGraveKey,
+                      keySize: _keySize,
+                      keyBorderRadius: _keyBorderRadius,
+                      keyPadding: _keyPadding,
+                      spaceWidth: _spaceWidth,
+                      splitWidth: _splitWidth,
+                      lastRowSplitWidth: _lastRowSplitWidth,
+                      keyBorderThickness: _keyBorderThickness,
+                      keyFontSize: _keyFontSize,
+                      spaceFontSize: _spaceFontSize,
+                      fontWeight: _fontWeight,
+                      markerOffset: _markerOffset,
+                      markerWidth: _markerWidth,
+                      markerHeight: _markerHeight,
+                      markerBorderRadius: _markerBorderRadius,
+                      keyColorPressed: _keyColorPressed,
+                      keyColorNotPressed: _keyColorNotPressed,
+                      markerColor: _markerColor,
+                      markerColorNotPressed: _markerColorNotPressed,
+                      keyTextColor: _keyTextColor,
+                      keyTextColorNotPressed: _keyTextColorNotPressed,
+                      keyBorderColorPressed: _keyBorderColorPressed,
+                      keyBorderColorNotPressed: _keyBorderColorNotPressed,
+                      animationEnabled: _animationEnabled,
+                      animationStyle: _animationStyle,
+                      animationDuration: _animationDuration,
+                      animationScale: _animationScale,
+                      learningModeEnabled: _learningModeEnabled,
+                      pinkyLeftColor: _pinkyLeftColor,
+                      ringLeftColor: _ringLeftColor,
+                      middleLeftColor: _middleLeftColor,
+                      indexLeftColor: _indexLeftColor,
+                      indexRightColor: _indexRightColor,
+                      middleRightColor: _middleRightColor,
+                      ringRightColor: _ringRightColor,
+                      pinkyRightColor: _pinkyRightColor,
+                      showAltLayout: _advancedSettingsEnabled && _showAltLayout,
+                      altLayout: _altLayout,
+                      use6ColLayout: _use6ColLayout,
+                      keyPressStates: _keyPressStates,
+                      customShiftMappings: _customShiftMappings,
                     ),
                   ),
                 ),
               ),
-              StatusOverlay(
-                visible: _showStatusOverlay,
-                message: _overlayMessage,
-                icon: _statusIcon,
-                backgroundColor: _keyColorNotPressed,
-                textColor: _keyTextColorNotPressed,
-                keySize: _keySize,
-                keyBorderRadius: _keyBorderRadius,
-              ),
-            ],
-          ),
-        );
-      }),
+            ),
+            StatusOverlay(
+              visible: _showStatusOverlay,
+              message: _overlayMessage,
+              icon: _statusIcon,
+              backgroundColor: _keyColorNotPressed,
+              textColor: _keyTextColorNotPressed,
+              keySize: _keySize,
+              keyBorderRadius: _keyBorderRadius,
+            ),
+          ],
+        ),
+      ),
       debugShowCheckedModeBanner: false,
     );
   }
